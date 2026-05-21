@@ -1,0 +1,15 @@
+{
+  "name": "departure-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "docker:up":    "docker compose -f docker-compose.dev.yml up -d",
+    "docker:down":  "docker compose -f docker-compose.dev.yml down",
+    "docker:logs":  "docker compose -f docker-compose.dev.yml logs -f",
+    "docker:reset": "docker compose -f docker-compose.dev.yml down -v",
+    "frontend":     "node frontend/node_modules/vite/bin/vite.js --config frontend/vite.config.js",
+    "local-ip":     "node scripts/local-ip.js",
+    "sim":          "node scripts/sim-device.js"
+  }
+}

@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "author": "Transit Keychain",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-v1",
+      "id": "esp32",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-e-paper-waveshare-213-bwr",
+      "id": "epaper",
+      "top": -200,
+      "left": 100,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnA",
+      "top": 180,
+      "left": -80,
+      "attrs": { "color": "green", "label": "A (next page)" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnB",
+      "top": 220,
+      "left": -80,
+      "attrs": { "color": "blue", "label": "B (prev page)" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnC",
+      "top": 260,
+      "left": -80,
+      "attrs": { "color": "yellow", "label": "C (OTA check)" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnD",
+      "top": 300,
+      "left": -80,
+      "attrs": { "color": "red", "label": "D (strapping!)" }
+    },
+    {
+      "type": "wokwi-rgb-led",
+      "id": "led",
+      "top": 100,
+      "left": -120,
+      "attrs": { "common": "cathode" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "resR",
+      "top": 100,
+      "left": -180,
+      "attrs": { "value": "220" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "resG",
+      "top": 120,
+      "left": -180,
+      "attrs": { "value": "220" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "resB",
+      "top": 140,
+      "left": -180,
+      "attrs": { "value": "220" }
+    },
+    {
+      "type": "wokwi-slide-potentiometer",
+      "id": "batPot",
+      "top": 380,
+      "left": -80,
+      "attrs": { "value": "0.75", "label": "Battery level" }
+    }
+  ],
+  "connections": [
+    ["esp32:GND.2", "led:COM", "black", []],
+    ["esp32:D32", "resR:1", "red", []],
+    ["resR:2", "led:R", "red", []],
+    ["esp32:D33", "resG:1", "green", []],
+    ["resG:2", "led:G", "green", []],
+    ["esp32:D13", "resB:1", "blue", []],
+    ["resB:2", "led:B", "blue", []],
+
+    ["esp32:D26", "btnA:1.l", "green", []],
+    ["esp32:GND.1", "btnA:2.l", "black", []],
+    ["esp32:D27", "btnB:1.l", "blue", []],
+    ["esp32:GND.1", "btnB:2.l", "black", []],
+    ["esp32:D14", "btnC:1.l", "yellow", []],
+    ["esp32:GND.1", "btnC:2.l", "black", []],
+    ["esp32:D12", "btnD:1.l", "red", []],
+    ["esp32:GND.1", "btnD:2.l", "black", []],
+
+    ["esp32:D23", "epaper:MOSI", "orange", []],
+    ["esp32:D18", "epaper:CLK", "yellow", []],
+    ["esp32:D5",  "epaper:CS",  "purple", []],
+    ["esp32:D17", "epaper:DC",  "blue", []],
+    ["esp32:D16", "epaper:RST", "green", []],
+    ["esp32:D4",  "epaper:BUSY","white", []],
+    ["esp32:3V3", "epaper:VCC", "red", []],
+    ["esp32:GND.3","epaper:GND","black", []],
+
+    ["esp32:3V3",  "batPot:VCC", "red", []],
+    ["esp32:GND.4","batPot:GND", "black", []],
+    ["batPot:SIG", "esp32:D34", "gray", []]
+  ],
+  "dependencies": {}
+}

@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: transit
+      POSTGRES_USER: transit
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U transit"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: harbor.megaluke.de/transit/backend:${IMAGE_TAG:-latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://transit:${DB_PASSWORD}@postgres:5432/transit
+      OTA_DIR: /data/firmware
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX: 60
+      ADMIN_SECRET: ${ADMIN_SECRET}
+      BUILD_WORKER_URL: http://build-worker:3001
+      SERVER_BASE_URL: https://transit.megaluke.de
+    volumes:
+      - firmware_data:/data/firmware
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 10s
+
+  build-worker:
+    image: harbor.megaluke.de/transit/build-worker:${IMAGE_TAG:-latest}
+    volumes:
+      - ./firmware:/firmware:ro
+      - build_cache:/builds
+      - pio_work:/work
+      - pio_cache:/pio-cache
+    environment:
+      NODE_ENV: production
+
+volumes:
+  postgres_data:
+  firmware_data:
+  build_cache:
+  pio_work:
+  pio_cache:

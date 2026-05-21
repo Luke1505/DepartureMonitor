@@ -1,0 +1,316 @@
+import { useState, useEffect } from 'react'
+import { QRCodeSVG } from 'qrcode.react'
+import { getFirmwareLatest, deleteDevice, saveDeviceSettings } from '../lib/api.js'
+import { useNavigate } from 'react-router-dom'
+
+const inputCls = 'w-full bg-[#f8f8fa] dark:bg-[#222] border border-[#eeeeee] dark:border-[#2e2e2e] text-[#111] dark:text-[#e4e4e7] rounded-lg px-3 py-2 text-xs outline-none focus:border-[#cc2200] transition-colors'
+const labelCls = 'block text-[0.58rem] font-bold tracking-[0.12em] uppercase text-[#ccc] dark:text-[#555] mb-1'
+
+function SettingsRow({ label, children }) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-2 border-b border-[#f0f0f0] dark:border-[#222] last:border-0">
+      <label className="text-xs font-medium text-[#111] dark:text-[#e4e4e7] flex-shrink-0">{label}</label>
+      {children}
+    </div>
+  )
+}
+
+export default function SettingsTab({ config, device, deviceId, onSave }) {
+  const navigate = useNavigate()
+  const [settings, setSettings] = useState({
+    refresh_minutes: config.refresh_minutes ?? 1,
+    bat_warn_pct: config.bat_warn_pct ?? 20,
+    timezone: config.timezone ?? 'Europe/Berlin',
+    shutdown_minutes: config.shutdown_minutes ?? 30,
+    ota_url: config.ota_url ?? '',
+  })
+  const [deviceSettings, setDeviceSettings] = useState({
+    language: device?.language ?? 'de',
+    display_type: device?.display_type ?? 'bwr',
+  })
+
+  useEffect(() => {
+    setSettings({
+      refresh_minutes: config.refresh_minutes ?? 1,
+      bat_warn_pct: config.bat_warn_pct ?? 20,
+      timezone: config.timezone ?? 'Europe/Berlin',
+      shutdown_minutes: config.shutdown_minutes ?? 30,
+      ota_url: config.ota_url ?? '',
+    })
+  }, [config])
+
+  useEffect(() => {
+    setDeviceSettings({
+      language: device?.language ?? 'de',
+      display_type: device?.display_type ?? 'bwr',
+    })
+  }, [device])
+
+  const [firmwareInfo, setFirmwareInfo] = useState(null)
+  const [checkingFw, setCheckingFw] = useState(false)
+  const [fwProgress, setFwProgress] = useState(0)
+  const [showQr, setShowQr] = useState(false)
+  const [confirmReset, setConfirmReset] = useState(false)
+  const [resetting, setResetting] = useState(false)
+
+  function updateSetting(key, value) {
+    setSettings((prev) => ({ ...prev, [key]: value }))
+  }
+
+  function updateDeviceSetting(key, value) {
+    setDeviceSettings((prev) => ({ ...prev, [key]: value }))
+  }
+
+  async function checkFirmware() {
+    setCheckingFw(true)
+    setFirmwareInfo(null)
+    setFwProgress(0)
+    try {
+      const fw = await getFirmwareLatest()
+      setFirmwareInfo(fw)
+      // Simulate progress animation
+      let p = 0
+      const interval = setInterval(() => {
+        p += 10
+        setFwProgress(p)
+        if (p >= 100) clearInterval(interval)
+      }, 80)
+    } catch (e) {
+      setFirmwareInfo({ error: 'Kein Update verfügbar' })
+    } finally {
+      setCheckingFw(false)
+    }
+  }
+
+  async function handleReset() {
+    setResetting(true)
+    try {
+      await deleteDevice(deviceId)
+      navigate('/')
+    } catch (e) {
+      console.error(e)
+      setResetting(false)
+    }
+  }
+
+  async function save() {
+    await Promise.all([
+      onSave(settings),
+      saveDeviceSettings(deviceId, deviceSettings),
+    ])
+  }
+
+  const selectCls = inputCls + ' cursor-pointer'
+
+  return (
+    <div className="space-y-3">
+      {/* General settings */}
+      <div className="bg-white dark:bg-[#1a1a1a] border border-[#eeeeee] dark:border-[#2e2e2e] rounded-[14px] p-4">
+        <p className={labelCls}>Allgemein</p>
+        <div className="mt-2">
+          <SettingsRow label="Sprache / Language">
+            <select
+              className={selectCls + ' w-40'}
+              value={deviceSettings.language}
+              onChange={(e) => updateDeviceSetting('language', e.target.value)}
+            >
+              <option value="de">🇩🇪 Deutsch</option>
+              <option value="en">🇬🇧 English</option>
+              <option value="fr">🇫🇷 Français</option>
+            </select>
+          </SettingsRow>
+          <SettingsRow label="Display-Typ">
+            <select
+              className={selectCls + ' w-40'}
+              value={deviceSettings.display_type}
+              onChange={(e) => updateDeviceSetting('display_type', e.target.value)}
+            >
+              <option value="bwr">BWR (3-Farb E-Ink)</option>
+              <option value="bw">BW (2-Farb E-Ink)</option>
+            </select>
+          </SettingsRow>
+          <SettingsRow label="Refresh-Intervall">
+            <select
+              className={selectCls + ' w-40'}
+              value={settings.refresh_minutes}
+              onChange={(e) => updateSetting('refresh_minutes', Number(e.target.value))}
+            >
+              <option value={1}>1 Minute</option>
+              <option value={2}>2 Minuten</option>
+              <option value={3}>3 Minuten</option>
+              <option value={5}>5 Minuten</option>
+              <option value={10}>10 Minuten</option>
+            </select>
+          </SettingsRow>
+          <SettingsRow label="Akkuwarnung ab">
+            <select
+              className={selectCls + ' w-40'}
+              value={settings.bat_warn_pct}
+              onChange={(e) => updateSetting('bat_warn_pct', Number(e.target.value))}
+            >
+              <option value={10}>10%</option>
+              <option value={20}>20%</option>
+              <option value={30}>30%</option>
+            </select>
+          </SettingsRow>
+          <SettingsRow label="Zeitzone">
+            <select
+              className={selectCls + ' w-40'}
+              value={settings.timezone}
+              onChange={(e) => updateSetting('timezone', e.target.value)}
+            >
+              <option value="Europe/Berlin">Europe/Berlin</option>
+              <option value="Europe/London">Europe/London</option>
+              <option value="UTC">UTC</option>
+              <option value="America/New_York">America/New_York</option>
+              <option value="America/Los_Angeles">America/Los_Angeles</option>
+              <option value="Asia/Tokyo">Asia/Tokyo</option>
+            </select>
+          </SettingsRow>
+          <SettingsRow label="Auto-Shutdown">
+            <select
+              className={selectCls + ' w-40'}
+              value={settings.shutdown_minutes}
+              onChange={(e) => updateSetting('shutdown_minutes', Number(e.target.value))}
+            >
+              <option value={30}>30 Minuten</option>
+              <option value={60}>1 Stunde</option>
+              <option value={120}>2 Stunden</option>
+              <option value={0}>Nie</option>
+            </select>
+          </SettingsRow>
+        </div>
+      </div>
+
+      {/* OTA Update */}
+      <div className="bg-white dark:bg-[#1a1a1a] border border-[#eeeeee] dark:border-[#2e2e2e] rounded-[14px] p-4">
+        <p className={labelCls}>OTA Update</p>
+        <div className="space-y-2 mt-2">
+          <div>
+            <label className="block text-xs text-[#aaa] dark:text-[#888] mb-1">Update URL</label>
+            <input
+              className={inputCls}
+              value={settings.ota_url}
+              onChange={(e) => updateSetting('ota_url', e.target.value)}
+              placeholder="https://..."
+            />
+          </div>
+          <button
+            onClick={checkFirmware}
+            disabled={checkingFw}
+            className="bg-[#cc2200] hover:bg-[#aa1800] disabled:opacity-50 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors"
+          >
+            {checkingFw ? 'Prüfe...' : 'Prüfen'}
+          </button>
+
+          {firmwareInfo && (
+            <div className="mt-2">
+              {firmwareInfo.error ? (
+                <p className="text-[#aaa] text-xs">{firmwareInfo.error}</p>
+              ) : (
+                <div>
+                  <p className="text-xs font-medium text-[#111] dark:text-[#e4e4e7] mb-1">
+                    Version {firmwareInfo.version} verfügbar
+                  </p>
+                  {fwProgress < 100 && (
+                    <div className="w-full bg-[#f0f0f0] dark:bg-[#222] rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="bg-[#cc2200] h-full rounded-full transition-all duration-100"
+                        style={{ width: `${fwProgress}%` }}
+                      />
+                    </div>
+                  )}
+                  {firmwareInfo.changelog && (
+                    <p className="text-xs text-[#aaa] mt-1">{firmwareInfo.changelog}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {device?.firmware && (
+            <p className="text-[0.65rem] text-[#aaa] dark:text-[#888]">
+              Aktuelle Firmware: <span className="font-mono">{device.firmware}</span>
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Config Backup */}
+      <div className="bg-white dark:bg-[#1a1a1a] border border-[#eeeeee] dark:border-[#2e2e2e] rounded-[14px] p-4">
+        <p className={labelCls}>Config Backup</p>
+        <div className="flex gap-2 mt-2">
+          <button
+            onClick={() => setShowQr((s) => !s)}
+            className="text-xs font-bold text-[#111] dark:text-[#e4e4e7] border border-[#eeeeee] dark:border-[#2e2e2e] px-3 py-1.5 rounded-lg hover:border-[#cc2200] hover:text-[#cc2200] transition-colors"
+          >
+            QR exportieren
+          </button>
+          <button
+            className="text-xs font-bold text-[#aaa] dark:text-[#888] border border-[#eeeeee] dark:border-[#2e2e2e] px-3 py-1.5 rounded-lg opacity-60 cursor-not-allowed"
+            disabled
+          >
+            QR importieren
+          </button>
+        </div>
+
+        {showQr && (
+          <div className="mt-3 flex flex-col items-center gap-2">
+            <div className="bg-white p-3 rounded-xl">
+              <QRCodeSVG
+                value={JSON.stringify(config)}
+                size={180}
+                level="M"
+              />
+            </div>
+            <p className="text-[0.6rem] text-[#aaa]">Config als QR Code</p>
+          </div>
+        )}
+      </div>
+
+      <button
+        onClick={save}
+        className="w-full bg-[#cc2200] hover:bg-[#aa1800] text-white font-bold rounded-lg py-2.5 text-sm transition-colors"
+      >
+        Speichern
+      </button>
+
+      {/* Divider */}
+      <div className="border-t border-[#eeeeee] dark:border-[#2e2e2e] my-4" />
+
+      {/* Factory Reset */}
+      <div className="bg-white dark:bg-[#1a1a1a] border border-[#eeeeee] dark:border-[#2e2e2e] rounded-[14px] p-4">
+        <p className={labelCls}>Gefahrenzone</p>
+        {!confirmReset ? (
+          <button
+            onClick={() => setConfirmReset(true)}
+            className="mt-2 text-xs font-bold text-[#cc2200] border-[1.5px] border-[#fecaca] dark:border-[#cc220040] px-4 py-2 rounded-lg hover:bg-[#cc220008] transition-colors"
+          >
+            Factory Reset
+          </button>
+        ) : (
+          <div className="mt-2 space-y-2">
+            <p className="text-xs text-[#cc2200] font-medium">
+              Gerät wirklich löschen? Dies kann nicht rückgängig gemacht werden.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={handleReset}
+                disabled={resetting}
+                className="bg-[#cc2200] hover:bg-[#aa1800] disabled:opacity-50 text-white text-xs font-bold px-4 py-2 rounded-lg"
+              >
+                {resetting ? 'Lösche...' : 'Ja, löschen'}
+              </button>
+              <button
+                onClick={() => setConfirmReset(false)}
+                className="text-xs font-bold text-[#aaa] border border-[#eeeeee] dark:border-[#2e2e2e] px-4 py-2 rounded-lg hover:text-[#111] dark:hover:text-[#e4e4e7]"
+              >
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
