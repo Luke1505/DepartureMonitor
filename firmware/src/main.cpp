@@ -377,28 +377,18 @@ void setup() {
     _wakeupCause = esp_sleep_get_wakeup_cause();
     _ext1Bits    = esp_sleep_get_ext1_wakeup_status();
 
-    // Confirm EXT1 pins with a 50ms sampling window.
-    // Boot from deep sleep to here takes ~30-70ms. Ghost floats (GPIO27 drifting up
-    // through leakage, ~1ms RC discharge) are already gone. Real button presses need
-    // to still be held for at least one of the 5 samples (10ms apart) to be confirmed.
-    // This catches short taps reliably without triggering on ghost floats.
-    if (_wakeupCause == ESP_SLEEP_WAKEUP_EXT1 && _ext1Bits != 0) {
-        uint64_t confirmed = 0;
-        const int btns[] = {BTN_A, BTN_B, BTN_C, BTN_D};
-        for (int pin : btns) {
-            if (_ext1Bits & (1ULL << pin)) {
-                pinMode(pin, INPUT_PULLDOWN);
-            }
+    // BTN_B (GPIO27) has no external pull-down and slowly floats up to EXT1 threshold
+    // through leakage every ~20s (ghost wakeup). Filter it by sampling the pin over a
+    // short window — ghost discharges in <1ms, real press stays HIGH.
+    // A/C/D do NOT float so we trust their EXT1 hardware bits directly.
+    if (_wakeupCause == ESP_SLEEP_WAKEUP_EXT1 && (_ext1Bits & (1ULL << BTN_B))) {
+        pinMode(BTN_B, INPUT_PULLDOWN);
+        bool realPress = false;
+        for (int i = 0; i < 5 && !realPress; i++) {
+            if (digitalRead(BTN_B) == HIGH) realPress = true;
+            else delay(10);
         }
-        for (int sample = 0; sample < 5; sample++) {
-            for (int pin : btns) {
-                if ((_ext1Bits & (1ULL << pin)) && digitalRead(pin) == HIGH) {
-                    confirmed |= (1ULL << pin);
-                }
-            }
-            delay(10);
-        }
-        _ext1Bits = confirmed;
+        if (!realPress) _ext1Bits &= ~(1ULL << BTN_B);
     }
 
     Serial.begin(115200);
