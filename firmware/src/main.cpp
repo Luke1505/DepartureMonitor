@@ -286,6 +286,10 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
             cfg = freshCfg;
             transitSaveConfig(cfg);
             Serial.println("[CFG] Config refreshed from server.");
+        } else {
+            // 202 / not in DB — re-register so server knows us and token is synced
+            Serial.println("[CFG] Server returned pending_setup — re-registering device.");
+            transitRegisterDevice(uuid);
         }
     }
 
@@ -337,6 +341,9 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
 
     goToSleep(cfg.refreshMinutes);
 }
+
+// Increase loopTask stack: DeviceConfig + StationDepartures structs are large (~2KB each)
+SET_LOOP_TASK_STACK_SIZE(24 * 1024);
 
 // ── Arduino entry points ──────────────────────────────────────────────────────
 
