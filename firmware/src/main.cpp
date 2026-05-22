@@ -44,11 +44,11 @@ static void setupPowerLatch() {
 }
 
 static void initButtons() {
-    // All buttons: active HIGH (external 10k pull-down to GND) → EXT1 wake on ANY_HIGH
-    pinMode(BTN_A, INPUT);
-    pinMode(BTN_B, INPUT);
-    pinMode(BTN_C, INPUT);
-    pinMode(BTN_D, INPUT);
+    // Active HIGH, internal pull-down keeps pins LOW when not pressed
+    pinMode(BTN_A, INPUT_PULLDOWN);
+    pinMode(BTN_B, INPUT_PULLDOWN);
+    pinMode(BTN_C, INPUT_PULLDOWN);
+    pinMode(BTN_D, INPUT_PULLDOWN);
 }
 
 static bool isButtonA() { return digitalRead(BTN_A) == HIGH; }
@@ -57,7 +57,7 @@ static bool isButtonC() { return digitalRead(BTN_C) == HIGH; }
 
 // Setup deep-sleep wakeup sources
 static void configureSleepWakeup(int refreshMinutes) {
-    // All buttons via EXT1: active-HIGH (external pull-down 10k to GND)
+    // All buttons via EXT1: active-HIGH (internal pull-down, no external resistor)
     const gpio_num_t ext1Pins[] = {(gpio_num_t)BTN_A, (gpio_num_t)BTN_B,
                                    (gpio_num_t)BTN_C, (gpio_num_t)BTN_D};
     for (auto pin : ext1Pins) {
@@ -379,6 +379,19 @@ void setup() {
 
     setupPowerLatch();
     initButtons();
+
+    // Filter spurious EXT1 bits: noise/capacitance glitches will be gone by now;
+    // a genuinely held button still reads HIGH against INPUT_PULLDOWN.
+    if (_wakeupCause == ESP_SLEEP_WAKEUP_EXT1) {
+        uint64_t confirmed = 0;
+        const int btns[] = {BTN_A, BTN_B, BTN_C, BTN_D};
+        for (int pin : btns) {
+            if ((_ext1Bits & (1ULL << pin)) && digitalRead(pin) == HIGH)
+                confirmed |= (1ULL << pin);
+        }
+        _ext1Bits = confirmed;
+    }
+
     ledInit();
     analogSetAttenuation(ADC_11db);// Full 0-3.3 V range for battery ADC
 
