@@ -88,11 +88,11 @@ static const LangStrings LANG_FR = {
     "m\xE0j ",
 };
 
-// Select language at compile time via -DLANG_DE / -DLANG_EN / -DLANG_FR
-// Default: German
-#if defined(LANG_EN)
+// Select language at compile time via -DUSE_LANG_EN / -DUSE_LANG_FR
+// Default: German (no flag needed)
+#if defined(USE_LANG_EN)
   static const LangStrings& STRINGS = LANG_EN;
-#elif defined(LANG_FR)
+#elif defined(USE_LANG_FR)
   static const LangStrings& STRINGS = LANG_FR;
 #else
   static const LangStrings& STRINGS = LANG_DE;
