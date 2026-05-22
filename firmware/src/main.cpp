@@ -191,7 +191,8 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
     // Skips WiFi entirely — just redraws with updated clock + adjusted countdowns.
     if (cause == ESP_SLEEP_WAKEUP_TIMER && _timeTicksLeft > 0) {
         _timeTicksLeft--;
-        int pageForDisplay = _pageIdx % max(cfg.stationCount, 1);
+        int n = max(cfg.stationCount, 1);
+        int pageForDisplay = ((_pageIdx % n) + n) % n;
         // Configure timezone so getLocalTime() returns local time (returns immediately
         // if the RTC already has valid time from the last NTP sync — no WiFi needed).
         wifiSyncTime(cfg.timezone);
@@ -280,7 +281,8 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
 
     if (!connected) {
         Serial.println("[WIFI] Offline — showing cached data.");
-        int pageForDisplay = _pageIdx % max(cfg.stationCount, 1);
+        int n = max(cfg.stationCount, 1);
+        int pageForDisplay = ((_pageIdx % n) + n) % n;
         _pageIdx = pageForDisplay;  // normalize back so next BTN_B/A starts from correct index
         StationDepartures cached = {};
         if (transitLoadCachedDepartures(cfg.stations[pageForDisplay], cached)) {
@@ -345,7 +347,8 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
     }
 
     // ── Fetch departures for current page ─────────────────────────────────────
-    int pageForDisplay = _pageIdx % max(cfg.stationCount, 1);
+    int n = max(cfg.stationCount, 1);
+    int pageForDisplay = ((_pageIdx % n) + n) % n;
     _pageIdx = pageForDisplay;  // normalize so next press starts from correct index
     StationDepartures deps = {};
     bool fetchOk = transitFetchDepartures(uuid, cfg.stations[pageForDisplay], deps);
