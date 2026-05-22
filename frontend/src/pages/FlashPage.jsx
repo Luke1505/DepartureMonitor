@@ -63,11 +63,13 @@ export default function FlashPage() {
   const espButtonRef = useRef(null)
   const webSerialSupported = 'serial' in navigator
 
+  useEffect(() => { document.title = 'Firmware flashen — Transit' }, [])
+
   // Load firmware manifest info
   useEffect(() => {
     setFirmwareLoading(true)
     setFirmwareError(null)
-    getFirmwareLatest()
+    getFirmwareLatest(channel)
       .then(setFirmware)
       .catch((e) => setFirmwareError(e.message))
       .finally(() => setFirmwareLoading(false))
@@ -287,12 +289,12 @@ export default function FlashPage() {
 
         {/* Browser compatibility warning */}
         {!webSerialSupported && (
-          <div className="bg-red-900/20 border border-red-800/40 rounded-[14px] p-4 flex gap-3 items-start">
-            <AlertTriangle size={18} className="text-red-400 flex-shrink-0 mt-0.5" />
+          <div className="bg-[#cc220010] dark:bg-red-900/20 border border-[#cc220030] dark:border-red-800/40 rounded-[14px] p-4 flex gap-3 items-start">
+            <AlertTriangle size={18} className="text-[#cc2200] dark:text-red-400 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-semibold text-red-300">Browser nicht unterstützt</p>
-              <p className="text-xs text-red-400/80 mt-1">
-                Web flashing requires Chrome or Edge. Web Serial is not supported in Firefox or Safari.
+              <p className="text-sm font-semibold text-[#cc2200] dark:text-red-300">Browser nicht unterstützt</p>
+              <p className="text-xs text-[#cc2200]/70 dark:text-red-400/80 mt-1">
+                Web-Flashing erfordert Chrome oder Edge. Firefox und Safari unterstützen Web Serial nicht.
               </p>
             </div>
           </div>
@@ -378,7 +380,7 @@ export default function FlashPage() {
                       </p>
                       {deviceId ? (
                         <p className="text-xs text-[#888]">
-                          Redirecting to config in {postFlashCountdown}s...
+                          Weiterleitung zur Konfiguration in {postFlashCountdown}s…
                         </p>
                       ) : (
                         <div className="space-y-2">
@@ -406,41 +408,26 @@ export default function FlashPage() {
                   ) : flashState === 'flashing' ? (
                     <div className="flex items-center gap-2 text-xs text-[#aaa]">
                       <div className="w-3 h-3 rounded-full border-2 border-[#cc2200] border-t-transparent animate-spin" />
-                      Flashing...
+                      Flashing läuft…
                     </div>
                   ) : backupDone ? (
                     <div>
                       <style>{`
-                        esp-web-install-button::part(button) {
-                          background: #cc2200;
-                          color: white;
-                          font-weight: 700;
-                          font-size: 0.75rem;
-                          border: none;
-                          border-radius: 8px;
-                          padding: 8px 16px;
-                          cursor: pointer;
-                          font-family: Inter, sans-serif;
-                          display: inline-flex;
-                          align-items: center;
-                          gap: 6px;
-                        }
-                        esp-web-install-button::part(button):hover {
-                          background: #aa1800;
-                        }
+                        esp-web-install-button::part(button) { display: none !important; }
                       `}</style>
                       {/* eslint-disable-next-line react/no-unknown-property */}
                       <esp-web-install-button
                         ref={espButtonRef}
                         manifest={MANIFEST_URL(channel)}
                       >
-                        <span slot="activate">Firmware flashen</span>
-                        <span slot="unsupported">
-                          Web Serial nicht unterstützt
-                        </span>
-                        <span slot="not-allowed">
-                          Zugriff verweigert
-                        </span>
+                        <button
+                          slot="activate"
+                          className="bg-[#cc2200] hover:bg-[#aa1800] active:scale-[0.98] text-white text-xs font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1.5"
+                        >
+                          <Zap size={13} /> Firmware flashen
+                        </button>
+                        <span slot="unsupported">Web Serial nicht unterstützt</span>
+                        <span slot="not-allowed">Zugriff verweigert</span>
                       </esp-web-install-button>
                     </div>
                   ) : (
@@ -456,9 +443,9 @@ export default function FlashPage() {
 
         {/* Info note */}
         <div className="flex items-start gap-2 px-1">
-          <Shield size={13} className="text-[#555] flex-shrink-0 mt-0.5" />
-          <p className="text-[0.65rem] text-[#555] dark:text-[#666]">
-            Works in Chrome &amp; Edge only. Web Serial not supported in Firefox/Safari.
+          <Shield size={13} className="text-[#aaa] dark:text-[#555] flex-shrink-0 mt-0.5" />
+          <p className="text-[0.65rem] text-[#aaa] dark:text-[#555]">
+            Nur in Chrome &amp; Edge verfügbar. Firefox und Safari unterstützen Web Serial nicht.
           </p>
         </div>
       </div>

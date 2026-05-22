@@ -101,13 +101,19 @@ export default function firmwareRouter(pool) {
     }
   });
 
-  // GET /api/firmware/latest
-  router.get('/latest', async (_req, res) => {
+  // GET /api/firmware/latest?channel=stable
+  router.get('/latest', async (req, res) => {
+    const channel = req.query.channel || 'stable';
+    const validChannels = ['stable', 'beta', 'dev'];
+    if (!validChannels.includes(channel)) {
+      return res.status(400).json({ error: 'Invalid channel' });
+    }
     try {
       const { rows } = await pool.query(
-        "SELECT * FROM firmware_versions WHERE is_latest = TRUE AND channel = 'stable' ORDER BY created_at DESC LIMIT 1"
+        'SELECT * FROM firmware_versions WHERE is_latest = TRUE AND channel = $1 ORDER BY created_at DESC LIMIT 1',
+        [channel]
       );
-      if (!rows.length) return res.status(404).json({ error: 'No firmware available' });
+      if (!rows.length) return res.status(404).json({ error: `Kein Firmware verfügbar für ${channel}` });
       res.json(rows[0]);
     } catch (err) {
       console.error(err);

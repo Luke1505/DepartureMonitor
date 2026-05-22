@@ -97,5 +97,5 @@ export const getWeather = (lat, lon) =>
 export const getAnalytics = (id) => request(`/api/transit/analytics/${id}`)
 
 // --- Firmware ---
-export const getFirmwareLatest = () => request('/api/firmware/latest')
+export const getFirmwareLatest = (channel = 'stable') => request(`/api/firmware/latest?channel=${channel}`)
 export const getFirmwareVersions = () => request('/api/firmware/versions')
