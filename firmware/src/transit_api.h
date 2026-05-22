@@ -41,8 +41,6 @@ struct DeviceConfig {
         char filterTypes[32];
         int  timeWindowStart;
         int  timeWindowEnd;
-        float lat;
-        float lon;
     } stations[6];
     int stationCount;
 
@@ -51,13 +49,6 @@ struct DeviceConfig {
     int  batWarnPct;
     char timezone[48];
     char otaUrl[128];
-};
-
-struct WeatherData {
-    float tempC;
-    int   wmoCode;
-    bool  isDay;
-    bool  ok;
 };
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
@@ -144,22 +135,127 @@ inline bool transitRegisterDevice(const String& uuid) {
     doc["firmware"] = FIRMWARE_VERSION;
     String body;
     serializeJson(doc, body);
-    return _apiPost("/api/device/" + uuid + "/register", body);
+
+    String url = String(SERVER_BASE_URL) + "/api/device/" + uuid + "/register";
+    HTTPClient http;
+    WiFiClientSecure secureClient;
+    if (url.startsWith("https://")) {
+        secureClient.setInsecure();
+        http.begin(secureClient, url);
+    } else {
+        http.begin(url);
+    }
+    http.setTimeout(API_TIMEOUT_MS);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("User-Agent", "TransitKeychain/" FIRMWARE_VERSION);
+
+    int code = http.POST(body);
+    if (code >= 200 && code < 300) {
+        String resp = http.getString();
+        JsonDocument rdoc;
+        if (deserializeJson(rdoc, resp) == DeserializationError::Ok) {
+            const char* tok = rdoc["access_token"];
+            if (tok && strlen(tok) > 0) {
+                Preferences prefs;
+                prefs.begin(PREFS_TRANSIT, false);
+                prefs.putString("access_token", tok);
+                prefs.end();
+                Serial.printf("[AUTH] Token saved: %s\n", tok);
+            }
+        }
+    }
+    http.end();
+    return (code >= 200 && code < 300);
 }
 
-inline bool transitSendHeartbeat(const String& uuid, uint8_t batPct) {
+inline String transitGetAccessToken() {
+    Preferences prefs;
+    prefs.begin(PREFS_TRANSIT, true);
+    String tok = prefs.getString("access_token", "");
+    prefs.end();
+    return tok;
+}
+
+// Authenticated GET — sends x-device-token header
+static String _apiGetAuth(const String& path) {
+    String url = String(SERVER_BASE_URL) + path;
+    HTTPClient http;
+    WiFiClientSecure secureClient;
+
+    if (url.startsWith("https://")) {
+        secureClient.setInsecure();
+        http.begin(secureClient, url);
+    } else {
+        http.begin(url);
+    }
+    http.setTimeout(API_TIMEOUT_MS);
+    http.addHeader("User-Agent", "TransitKeychain/" FIRMWARE_VERSION);
+    String token = transitGetAccessToken();
+    if (token.length() > 0) {
+        http.addHeader("x-device-token", token);
+    }
+
+    int code = http.GET();
+    String body;
+    if (code == 200) {
+        body = http.getString();
+    } else {
+        Serial.printf("[API] GET %s -> %d\n", url.c_str(), code);
+    }
+    http.end();
+    return body;
+}
+
+// Returns the show_token value if server requested it, empty string otherwise
+inline String transitSendHeartbeat(const String& uuid, uint8_t batPct) {
     JsonDocument doc;
     doc["battery_pct"] = batPct;
     doc["firmware"]    = FIRMWARE_VERSION;
     doc["ssid"]        = WiFi.SSID();
     String body;
     serializeJson(doc, body);
-    return _apiPost("/api/device/" + uuid + "/heartbeat", body);
+
+    String url = String(SERVER_BASE_URL) + "/api/device/" + uuid + "/heartbeat";
+    HTTPClient http;
+    WiFiClientSecure secureClient;
+    if (url.startsWith("https://")) {
+        secureClient.setInsecure();
+        http.begin(secureClient, url);
+    } else {
+        http.begin(url);
+    }
+    http.setTimeout(API_TIMEOUT_MS);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("User-Agent", "TransitKeychain/" FIRMWARE_VERSION);
+    String hbToken = transitGetAccessToken();
+    if (hbToken.length() > 0) {
+        http.addHeader("x-device-token", hbToken);
+    }
+
+    int code = http.POST(body);
+    String showToken;
+    if (code >= 200 && code < 300) {
+        String resp = http.getString();
+        JsonDocument rdoc;
+        if (deserializeJson(rdoc, resp) == DeserializationError::Ok) {
+            const char* tok = rdoc["show_token"];
+            if (tok && strlen(tok) > 0) {
+                showToken = String(tok);
+                // Also persist the latest token in case it changed
+                Preferences prefs;
+                prefs.begin(PREFS_TRANSIT, false);
+                prefs.putString("access_token", tok);
+                prefs.end();
+            }
+        }
+    }
+    http.end();
+    return showToken;
 }
 
-// Fetch WiFi networks from server and save any new ones to NVS
+// Fetch WiFi networks from server (auth'd) and save any new ones to NVS
 inline void transitSyncWifiNetworks(const String& uuid) {
-    String body = _apiGet("/api/device/" + uuid + "/wifi");
+    String body = _apiGetAuth("/api/device/" + uuid + "/wifi");
     if (body.length() == 0) return;
 
     JsonDocument doc;
@@ -200,8 +296,6 @@ static bool _parseConfig(const String& json, DeviceConfig& cfg) {
         strlcpy(st.filterTypes,  s["filterTypes"] | "", sizeof(st.filterTypes));
         st.timeWindowStart = s["timeWindows"][0] | 0;
         st.timeWindowEnd   = s["timeWindows"][1] | 120;
-        st.lat = s["lat"] | 0.0f;
-        st.lon = s["lon"] | 0.0f;
     }
     return true;
 }
@@ -324,10 +418,13 @@ inline bool transitFetchDepartures(const String& uuid, const DeviceConfig::Stati
         dep.type        = _typeFromLine(dep.line);
     }
 
-    // Cache to Preferences for offline use
+    // Cache to Preferences for offline use — NVS keys ≤15 chars, so hash stopId
+    char ckey[9];
+    { uint32_t h = 5381; for (const char* p = station.stopId; *p; p++) h = h*33 ^ (uint8_t)*p;
+      snprintf(ckey, sizeof(ckey), "%08lx", (unsigned long)h); }
     Preferences cache;
     cache.begin(PREFS_CACHE, false);
-    cache.putString(station.stopId, body.c_str());
+    cache.putString(ckey, body.c_str());
     cache.end();
 
     return true;
@@ -335,9 +432,12 @@ inline bool transitFetchDepartures(const String& uuid, const DeviceConfig::Stati
 
 inline bool transitLoadCachedDepartures(const DeviceConfig::Station& station,
                                          StationDepartures& result) {
+    char ckey[9];
+    { uint32_t h = 5381; for (const char* p = station.stopId; *p; p++) h = h*33 ^ (uint8_t)*p;
+      snprintf(ckey, sizeof(ckey), "%08lx", (unsigned long)h); }
     Preferences cache;
     cache.begin(PREFS_CACHE, true);
-    String body = cache.getString(station.stopId, "");
+    String body = cache.getString(ckey, "");
     cache.end();
     if (body.length() == 0) { result.ok = false; return false; }
 
@@ -363,24 +463,5 @@ inline bool transitLoadCachedDepartures(const DeviceConfig::Station& station,
         dep.isCancelled = d["cancelled"]   | false;
         dep.type        = _typeFromLine(dep.line);
     }
-    return true;
-}
-
-// ── Weather ───────────────────────────────────────────────────────────────────
-
-inline bool transitFetchWeather(const String& uuid, float lat, float lon, WeatherData& out) {
-    if (lat == 0.0f && lon == 0.0f) { out.ok = false; return false; }
-    String path = "/api/transit/weather?lat=" + String(lat, 4) + "&lon=" + String(lon, 4)
-                + "&deviceId=" + uuid;
-    String body = _apiGet(path);
-    if (body.length() == 0) { out.ok = false; return false; }
-
-    JsonDocument doc;
-    if (deserializeJson(doc, body) != DeserializationError::Ok) { out.ok = false; return false; }
-
-    out.tempC   = doc["temp"]     | 0.0f;
-    out.wmoCode = doc["code"]     | 0;
-    out.isDay   = doc["is_day"]   | true;  // Open-Meteo passes this through backend
-    out.ok      = true;
     return true;
 }

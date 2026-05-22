@@ -385,6 +385,7 @@ export default function StationsTab({ config, deviceId, onSave }) {
     if (!over || active.id === over.id) return
     const oldIndex = stations.findIndex((s) => s._id === active.id)
     const newIndex = stations.findIndex((s) => s._id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
     setStations(arrayMove(stations, oldIndex, newIndex))
   }
 

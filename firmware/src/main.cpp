@@ -148,18 +148,14 @@ static void handleFirstBoot() {
 
     // Fetch and show first departures
     if (cfg.stationCount > 0) {
-        StationDepartures deps;
-        WeatherData weather = {};
+        StationDepartures deps = {};
         transitFetchDepartures(uuid, cfg.stations[0], deps);
-        if (cfg.stations[0].lat != 0.0f) {
-            transitFetchWeather(uuid, cfg.stations[0].lat, cfg.stations[0].lon, weather);
-        }
 
         uint8_t bat = batteryReadPercent();
         String t = wifiGetTimeString(15);
         strlcpy(_lastUpdateStr, t.c_str(), sizeof(_lastUpdateStr));
 
-        displayShowDepartures(deps, weather, bat, batteryIsCharging(),
+        displayShowDepartures(deps, bat, batteryIsCharging(),
                               t.c_str(), 0, cfg.stationCount,
                               false, _lastHadRed, _lastHadRed);
     }
@@ -184,24 +180,43 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
 
     // ── Handle button wakeup ──────────────────────────────────────────────────
     if (cause == ESP_SLEEP_WAKEUP_EXT0) {
-        // BTN_A: next page
-        _pageIdx = (_pageIdx + 1) % max(cfg.stationCount, 1);
+        // BTN_A: next page — don't modulo yet; we defer normalization until
+        // after the online config refresh so a freshly-added station is reachable
+        // even if the NVS copy still has the old (lower) station count.
+        _pageIdx++;
         _inactiveBoots = 0;
-        Serial.printf("[BTN] A pressed → page %d\n", _pageIdx);
+        Serial.printf("[BTN] A pressed → page %d (pre-norm)\n", _pageIdx);
     } else if (cause == ESP_SLEEP_WAKEUP_EXT1) {
         uint64_t bits = esp_sleep_get_ext1_wakeup_status();
+        // The EXT1 status register sometimes doesn't latch on short presses.
+        // Fall back to direct GPIO reads so we never miss a button.
+        if (bits == 0) {
+            delay(5);
+            if (digitalRead(BTN_B) == HIGH) bits |= (1ULL << BTN_B);
+            if (digitalRead(BTN_C) == HIGH) bits |= (1ULL << BTN_C);
+            if (digitalRead(BTN_D) == HIGH) bits |= (1ULL << BTN_D);
+        }
         if (bits & (1ULL << BTN_B)) {
-            // BTN_B: previous page (active HIGH)
-            _pageIdx = (_pageIdx - 1 + max(cfg.stationCount, 1)) % max(cfg.stationCount, 1);
+            // BTN_B: previous page — defer modulo until after config refresh (same as BTN_A)
+            _pageIdx--;
             _inactiveBoots = 0;
-            Serial.printf("[BTN] B pressed → page %d\n", _pageIdx);
+            Serial.printf("[BTN] B pressed → page %d (pre-norm)\n", _pageIdx);
         } else if (bits & (1ULL << BTN_C)) {
             // BTN_C: force OTA check (active HIGH)
             _inactiveBoots = 0;
             Serial.println("[BTN] C pressed → OTA check");
         } else if (bits & (1ULL << BTN_D)) {
-            // BTN_D: reserved (active HIGH)
+            // BTN_D: show access token (works offline — reads from NVS)
             _inactiveBoots = 0;
+            Serial.println("[BTN] D pressed → show access token");
+            String token = transitGetAccessToken();
+            if (token.length() > 0) {
+                displayShowAccessCode(uuid.c_str(), token.c_str());
+            } else {
+                displayShowLoading("No token yet.");
+            }
+            goToSleep(1);
+            return;
         }
     } else {
         // Timer wakeup
@@ -232,11 +247,11 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
 
     if (!connected) {
         Serial.println("[WIFI] Offline — showing cached data.");
-        int pageForDisplay = min(_pageIdx, cfg.stationCount - 1);
-        StationDepartures cached;
+        int pageForDisplay = _pageIdx % max(cfg.stationCount, 1);
+        _pageIdx = pageForDisplay;  // normalize back so next BTN_B/A starts from correct index
+        StationDepartures cached = {};
         if (transitLoadCachedDepartures(cfg.stations[pageForDisplay], cached)) {
-            WeatherData noWeather = {};
-            displayShowDepartures(cached, noWeather, bat, batteryIsCharging(),
+            displayShowDepartures(cached, bat, batteryIsCharging(),
                                   _lastUpdateStr, pageForDisplay, cfg.stationCount,
                                   _otaAvailable, _lastHadRed, _lastHadRed);
         } else {
@@ -262,7 +277,13 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
     }
 
     // ── Heartbeat ─────────────────────────────────────────────────────────────
-    transitSendHeartbeat(uuid, bat);
+    String showToken = transitSendHeartbeat(uuid, bat);
+    if (showToken.length() > 0) {
+        Serial.printf("[AUTH] Server requested token display: %s\n", showToken.c_str());
+        displayShowAccessCode(uuid.c_str(), showToken.c_str());
+        goToSleep(1);  // stay on access code screen for 60s
+        return;
+    }
 
     // ── Sync WiFi networks from server ────────────────────────────────────────
     transitSyncWifiNetworks(uuid);
@@ -285,23 +306,19 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
     }
 
     // ── Fetch departures for current page ─────────────────────────────────────
-    int pageForDisplay = min(_pageIdx, cfg.stationCount - 1);
-    StationDepartures deps;
+    int pageForDisplay = _pageIdx % max(cfg.stationCount, 1);
+    _pageIdx = pageForDisplay;  // normalize so next press starts from correct index
+    StationDepartures deps = {};
     bool fetchOk = transitFetchDepartures(uuid, cfg.stations[pageForDisplay], deps);
     if (!fetchOk) {
         // Fall back to cached
         transitLoadCachedDepartures(cfg.stations[pageForDisplay], deps);
     }
 
-    // ── Weather for current station ───────────────────────────────────────────
-    WeatherData weather = {};
-    transitFetchWeather(uuid, cfg.stations[pageForDisplay].lat,
-                        cfg.stations[pageForDisplay].lon, weather);
-
     // ── Draw departures ───────────────────────────────────────────────────────
     String timeNow = wifiGetTimeString(15);
     strlcpy(_lastUpdateStr, timeNow.c_str(), sizeof(_lastUpdateStr));
-    displayShowDepartures(deps, weather, bat, batteryIsCharging(),
+    displayShowDepartures(deps, bat, batteryIsCharging(),
                           timeNow.c_str(), pageForDisplay, cfg.stationCount,
                           _otaAvailable, _lastHadRed, _lastHadRed);
 

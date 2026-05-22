@@ -255,7 +255,7 @@ static void _drawStationIcon(int x, int y, const char* key) {
     else if (strcmp(key, "utensils")     == 0) icon = SICON_UTENSILS;
     else if (strcmp(key, "graduation-cap")== 0) icon = SICON_GRADUATION;
     else if (strcmp(key, "cross")        == 0) icon = SICON_CROSS;
-    display.drawBitmap(x, y, icon, 12, 12, GxEPD_BLACK);
+    display.drawBitmap(x, y, icon, 12, 12, GxEPD_RED);
 }
 
 // Draw battery icon (18×9 px) at (x, y)
@@ -366,7 +366,7 @@ inline void displayInit() {
 inline void displayShowLoading(const char* message = "Loading...") {
     DISPLAY_DRAW_BEGIN(true)
         display.setFont(&FreeSansBold9pt7b);
-        display.setTextColor(GxEPD_BLACK);
+        display.setTextColor(GxEPD_RED);
         display.setCursor(4, 20);
         display.print("Transit Keychain");
         display.setFont(&FreeSansBold9pt7b);
@@ -469,11 +469,11 @@ inline void displayShowWaitingForConfig(const char* uuid) {
         const int textW = qrX - 6;
 
         display.setFont(&FreeSansBold9pt7b);
-        display.setTextColor(GxEPD_BLACK);
+        display.setTextColor(GxEPD_RED);
         display.setCursor(3, 13);
         display.print(STRINGS.configTitle);
 
-        display.drawFastHLine(0, 15, textW, GxEPD_BLACK);
+        display.drawFastHLine(0, 18, textW, GxEPD_RED);
 
         display.setFont(&FreeSansBold9pt7b);
         display.setCursor(3, 30);
@@ -493,7 +493,7 @@ inline void displayShowWaitingForConfig(const char* uuid) {
 inline void displayShowNoSignal(const char* lastTime = nullptr) {
     DISPLAY_DRAW_BEGIN(false)
         display.setFont(&FreeSansBold9pt7b);
-        display.setTextColor(GxEPD_BLACK);
+        display.setTextColor(GxEPD_RED);
         display.setCursor(4, 20);
         display.print("No WiFi");
 
@@ -516,16 +516,16 @@ inline void displayShowNoSignal(const char* lastTime = nullptr) {
 
 inline void displayShowOfflineClock(const char* time24, const char* lastUpdate) {
     DISPLAY_DRAW_BEGIN(false)
-        // Big time in center
+        // Big time in center — red for visual impact on offline screen
         display.setFont(&FreeSansBold9pt7b);
-        display.setTextColor(GxEPD_BLACK);
+        display.setTextColor(GxEPD_RED);
         int16_t x1, y1; uint16_t w, h;
         display.getTextBounds(time24, 0, 0, &x1, &y1, &w, &h);
         display.setCursor((DW - w) / 2, DH / 2 + 6);
         display.print(time24);
 
         display.setFont(&FreeSansBold9pt7b);
-        display.setCursor(4, DH - 3);
+        display.setCursor(4, DH - 7);
         display.print("offline  ");
         display.print(STRINGS.updPrefix);
         display.print(lastUpdate);
@@ -557,7 +557,7 @@ inline void displayShowLowBattery(uint8_t pct) {
 inline void displayShowShutdown() {
     DISPLAY_DRAW_BEGIN(true)
         display.setFont(&FreeSansBold9pt7b);
-        display.setTextColor(GxEPD_BLACK);
+        display.setTextColor(GxEPD_RED);
         display.setCursor(4, 20);
         display.print(STRINGS.shutdownTitle);
 
@@ -572,11 +572,12 @@ inline void displayShowShutdown() {
 inline void displayShowOtaProgress(const char* version, size_t done, size_t total) {
     DISPLAY_DRAW_BEGIN(true)
         display.setFont(&FreeSansBold9pt7b);
-        display.setTextColor(GxEPD_BLACK);
+        display.setTextColor(GxEPD_RED);
         display.setCursor(4, 18);
         display.print(STRINGS.otaTitle);
 
         display.setFont(&FreeSansBold9pt7b);
+        display.setTextColor(GxEPD_BLACK);
         display.setCursor(4, 34);
         display.print(version);
 
@@ -585,7 +586,7 @@ inline void displayShowOtaProgress(const char* version, size_t done, size_t tota
         display.drawRect(4, 44, barW, 10, GxEPD_BLACK);
         if (total > 0) {
             int fill = (int)((float)done / (float)total * (barW - 2));
-            display.fillRect(5, 45, fill, 8, GxEPD_BLACK);
+            display.fillRect(5, 45, fill, 8, GxEPD_RED);
         }
 
         char pct[12];
@@ -595,10 +596,75 @@ inline void displayShowOtaProgress(const char* version, size_t done, size_t tota
     DISPLAY_DRAW_END()
 }
 
+// ── Access code screen ────────────────────────────────────────────────────────
+// Shows the device access token as a scannable QR + typed code "XXXX-XXXX"
+
+inline void displayShowAccessCode(const char* uuid, const char* token) {
+    // Format as XXXX-XXXX
+    char formatted[10] = {};
+    if (strlen(token) == 8) {
+        snprintf(formatted, sizeof(formatted), "%.4s-%.4s", token, token + 4);
+    } else {
+        strlcpy(formatted, token, sizeof(formatted));
+    }
+
+    // QR encodes the full device URL with token so scanning grants direct access
+    char url[140];
+    snprintf(url, sizeof(url), "%s/device/%s?token=%s", SERVER_BASE_URL, uuid, token);
+
+    QRCode qrcode;
+    uint8_t qrBuf[qrcode_getBufferSize(5)];
+    qrcode_initText(&qrcode, qrBuf, 5, ECC_LOW, url);
+
+    const int MOD  = 2;
+    const int qrPx = qrcode.size * MOD;
+    const int qrX  = DW - qrPx - 3;
+    const int qrY  = (DH - qrPx) / 2;
+
+    DISPLAY_DRAW_BEGIN(true)
+        // QR code with white border
+        display.fillRect(qrX - 2, qrY - 2, qrPx + 4, qrPx + 4, GxEPD_WHITE);
+        for (int qy = 0; qy < qrcode.size; qy++) {
+            for (int qx = 0; qx < qrcode.size; qx++) {
+                if (qrcode_getModule(&qrcode, qx, qy)) {
+                    display.fillRect(qrX + qx * MOD, qrY + qy * MOD, MOD, MOD, GxEPD_BLACK);
+                }
+            }
+        }
+
+        const int textW = qrX - 6;
+
+        // Title in red
+        display.setFont(&FreeSansBold9pt7b);
+        display.setTextColor(GxEPD_RED);
+        display.setCursor(3, 13);
+        display.print("ZUGRIFFSCODE");
+        display.drawFastHLine(0, 16, textW, GxEPD_BLACK);
+
+        // Big token code centred in text area
+        display.setFont(&FreeSansBold9pt7b);
+        display.setTextColor(GxEPD_BLACK);
+        int16_t tx, ty; uint16_t tw, th;
+        display.getTextBounds(formatted, 0, 0, &tx, &ty, &tw, &th);
+        display.setCursor((textW - tw) / 2, 52);
+        display.print(formatted);
+
+        // Hint below code
+        display.setFont(&FreeSans9pt7b);
+        display.setCursor(3, 70);
+        display.print("Scan oder eintippen");
+
+        // Footer — divider at 100 leaves clear gap to text ascenders at ~104
+        display.drawFastHLine(0, 100, DW, GxEPD_BLACK);
+        display.setFont(&FreeSans9pt7b);
+        display.setCursor(4, FTR_Y - 4);
+        display.print("transit.megaluke.de");
+    DISPLAY_DRAW_END()
+}
+
 // ── Main departures screen ────────────────────────────────────────────────────
 
 inline void displayShowDepartures(const StationDepartures& data,
-                                   const WeatherData& weather,
                                    uint8_t batPct, bool charging,
                                    const char* timeStr,
                                    int pageIdx, int pageTotal,

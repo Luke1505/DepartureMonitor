@@ -1,43 +1,72 @@
-const BASE_URL = import.meta.env.VITE_API_URL || ''
+﻿const BASE_URL = import.meta.env.VITE_API_URL || ''
 
-async function request(path, options = {}) {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+// --- Device token storage (per device, in localStorage) ---
+export const getDeviceToken = (id) => localStorage.getItem(`dtok_${id}`) || ''
+export const storeDeviceToken = (id, token) => localStorage.setItem(`dtok_${id}`, token.toUpperCase())
+export const clearDeviceToken = (id) => localStorage.removeItem(`dtok_${id}`)
+
+function request(path, options = {}) {
+  return fetch(`${BASE_URL}${path}`, {
     ...options,
+    headers: { 'Content-Type': 'application/json', ...options.headers },
+  }).then(async (res) => {
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }))
+      throw Object.assign(new Error(err.error || 'Request failed'), { status: res.status, data: err })
+    }
+    return res.json()
   })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }))
-    throw Object.assign(new Error(err.error || 'Request failed'), { status: res.status, data: err })
-  }
-  return res.json()
 }
 
-export const getDevice = (id) => request(`/api/device/${id}`)
+function requestAuth(path, id, options = {}) {
+  return request(path, {
+    ...options,
+    headers: { ...options.headers, 'x-device-token': getDeviceToken(id) },
+  })
+}
 
+// --- Device list (open) ---
+export const listDevices = () => request('/api/device')
+
+// --- Per-device (require token) ---
+export const getDevice = (id) => requestAuth(`/api/device/${id}`, id)
+
+export const deleteDevice = (id) =>
+  requestAuth(`/api/device/${id}`, id, { method: 'DELETE' })
+
+export const saveDeviceSettings = (id, settings) =>
+  requestAuth(`/api/device/${id}`, id, { method: 'PATCH', body: JSON.stringify(settings) })
+
+export const getWifi = (id) => requestAuth(`/api/device/${id}/wifi`, id)
+
+export const addWifi = (id, body) =>
+  requestAuth(`/api/device/${id}/wifi`, id, { method: 'POST', body: JSON.stringify(body) })
+
+export const deleteWifi = (id, networkId) =>
+  requestAuth(`/api/device/${id}/wifi/${networkId}`, id, { method: 'DELETE' })
+
+export const getConfig = (id) => request(`/api/device/${id}/config`)
+
+export const saveConfig = (id, config) =>
+  requestAuth(`/api/device/${id}/config`, id, { method: 'POST', body: JSON.stringify(config) })
+
+export const getConfigHistory = (id) => requestAuth(`/api/device/${id}/config/history`, id)
+
+// --- Token management ---
+export const requestTokenDisplay = (id) =>
+  request(`/api/device/${id}/token/request`, { method: 'POST' })
+
+export const regenerateToken = (id) =>
+  requestAuth(`/api/device/${id}/token/regenerate`, id, { method: 'POST' })
+
+// --- Device registration (open, called by firmware) ---
 export const registerDevice = (id, body) =>
   request(`/api/device/${id}/register`, { method: 'POST', body: JSON.stringify(body) })
 
 export const heartbeat = (id, data) =>
   request(`/api/device/${id}/heartbeat`, { method: 'POST', body: JSON.stringify(data) })
 
-export const deleteDevice = (id) =>
-  request(`/api/device/${id}`, { method: 'DELETE' })
-
-export const getConfig = (id) => request(`/api/device/${id}/config`)
-
-export const saveConfig = (id, config) =>
-  request(`/api/device/${id}/config`, { method: 'POST', body: JSON.stringify(config) })
-
-export const getConfigHistory = (id) => request(`/api/device/${id}/config/history`)
-
-export const getWifi = (id) => request(`/api/device/${id}/wifi`)
-
-export const addWifi = (id, body) =>
-  request(`/api/device/${id}/wifi`, { method: 'POST', body: JSON.stringify(body) })
-
-export const deleteWifi = (id, networkId) =>
-  request(`/api/device/${id}/wifi/${networkId}`, { method: 'DELETE' })
-
+// --- Transit ---
 export const getDepartures = (stopId, api, deviceId) =>
   request(`/api/transit/departures?stopId=${encodeURIComponent(stopId)}&api=${api}&deviceId=${deviceId || ''}`)
 
@@ -49,12 +78,6 @@ export const getWeather = (lat, lon) =>
 
 export const getAnalytics = (id) => request(`/api/transit/analytics/${id}`)
 
+// --- Firmware ---
 export const getFirmwareLatest = () => request('/api/firmware/latest')
-
 export const getFirmwareVersions = () => request('/api/firmware/versions')
-
-export const saveDeviceSettings = (deviceId, settings) =>
-  request(`/api/device/${deviceId}`, {
-    method: 'PATCH',
-    body: JSON.stringify(settings),
-  })

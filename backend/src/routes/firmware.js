@@ -139,6 +139,10 @@ export default function firmwareRouter(pool) {
   // GET /api/firmware/manifest/:channel  → ESP Web Tools manifest JSON
   router.get('/manifest/:channel', async (req, res) => {
     const { channel } = req.params;
+    const validChannels = ['stable', 'beta', 'dev'];
+    if (!validChannels.includes(channel)) {
+      return res.status(400).json({ error: 'Invalid channel' });
+    }
     try {
       const { rows } = await pool.query(
         'SELECT * FROM firmware_versions WHERE channel = $1 AND is_latest = TRUE ORDER BY created_at DESC LIMIT 1',
@@ -180,6 +184,10 @@ export default function firmwareRouter(pool) {
     if (!allowed.includes(filename)) {
       return res.status(400).json({ error: 'Invalid filename' });
     }
+    // Validate version to prevent path traversal (semver-like: digits, dots, hyphens only)
+    if (!/^[a-zA-Z0-9._-]+$/.test(version) || version.includes('..')) {
+      return res.status(400).json({ error: 'Invalid version' });
+    }
 
     const filePath = join(OTA_DIR, version, filename);
     if (!existsSync(filePath)) {
@@ -194,6 +202,10 @@ export default function firmwareRouter(pool) {
   // Legacy: GET /api/firmware/download/:version  (single-file compat)
   router.get('/download/:version', async (req, res) => {
     const { version } = req.params;
+    // Validate version to prevent path traversal
+    if (!/^[a-zA-Z0-9._-]+$/.test(version) || version.includes('..')) {
+      return res.status(400).json({ error: 'Invalid version' });
+    }
     try {
       const { rows } = await pool.query(
         'SELECT * FROM firmware_versions WHERE version = $1',

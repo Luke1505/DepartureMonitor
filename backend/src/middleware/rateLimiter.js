@@ -17,3 +17,23 @@ export const registerRateLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many registration attempts.' },
 });
+
+// Per-device: 3 token requests per 5 minutes
+export const tokenRequestDeviceLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 3,
+  keyGenerator: (req) => `device:${req.params.id || 'unknown'}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many token requests for this device, please wait.' },
+});
+
+// Per-IP: 10 token requests per 5 minutes across all devices
+export const tokenRequestIpLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => `ip:${req.ip}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many token requests, please wait.' },
+});

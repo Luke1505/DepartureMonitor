@@ -1,15 +1,31 @@
 import { Router } from 'express';
-import { v4 as uuidv4 } from 'uuid';
-import { registerRateLimiter, deviceRateLimiter } from '../middleware/rateLimiter.js';
+import { registerRateLimiter, deviceRateLimiter, tokenRequestDeviceLimiter, tokenRequestIpLimiter } from '../middleware/rateLimiter.js';
+import { generateToken } from '../middleware/deviceAuth.js';
 
-export default function deviceRouter(pool) {
+export default function deviceRouter(pool, requireDeviceToken) {
   const router = Router();
 
-  // GET /api/device/:id
-  router.get('/:id', deviceRateLimiter, async (req, res) => {
+  // GET /api/device  — open, returns public info only (no token or config)
+  router.get('/', async (_req, res) => {
+    try {
+      const { rows } = await pool.query(
+        'SELECT id, name, firmware, battery_pct, last_seen, is_setup FROM devices ORDER BY last_seen DESC NULLS LAST'
+      );
+      res.json(rows);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/device/:id  (requires device token)
+  router.get('/:id', requireDeviceToken, deviceRateLimiter, async (req, res) => {
     const { id } = req.params;
     try {
-      const { rows } = await pool.query('SELECT * FROM devices WHERE id = $1', [id]);
+      const { rows } = await pool.query(
+        'SELECT id, name, firmware, battery_pct, last_seen, is_setup, ssid, language, display_type FROM devices WHERE id = $1',
+        [id]
+      );
       if (!rows.length) return res.status(404).json({ error: 'Device not found' });
       res.json(rows[0]);
     } catch (err) {
@@ -18,22 +34,26 @@ export default function deviceRouter(pool) {
     }
   });
 
-  // POST /api/device/:id/register
+  // POST /api/device/:id/register  — open, device calls on boot
   router.post('/:id/register', registerRateLimiter, async (req, res) => {
     const { id } = req.params;
     const { name, firmware } = req.body;
 
     try {
+      const existing = await pool.query('SELECT access_token FROM devices WHERE id = $1', [id]);
+      const token = existing.rows[0]?.access_token || generateToken();
+
       const { rows } = await pool.query(
-        `INSERT INTO devices (id, name, firmware, is_setup, last_seen)
-         VALUES ($1, $2, $3, TRUE, NOW())
+        `INSERT INTO devices (id, name, firmware, is_setup, last_seen, access_token)
+         VALUES ($1, $2, $3, TRUE, NOW(), $4)
          ON CONFLICT (id) DO UPDATE
            SET name = COALESCE($2, devices.name),
                firmware = COALESCE($3, devices.firmware),
                is_setup = TRUE,
-               last_seen = NOW()
-         RETURNING *`,
-        [id, name || null, firmware || null]
+               last_seen = NOW(),
+               access_token = COALESCE(devices.access_token, $4)
+         RETURNING id, name, firmware, is_setup, access_token`,
+        [id, name || null, firmware || null, token]
       );
       res.json(rows[0]);
     } catch (err) {
@@ -42,13 +62,13 @@ export default function deviceRouter(pool) {
     }
   });
 
-  // POST /api/device/:id/heartbeat
-  router.post('/:id/heartbeat', deviceRateLimiter, async (req, res) => {
+  // POST /api/device/:id/heartbeat  — requires device token
+  // If pending_show_token is set, response includes show_token (display_token) so device displays it
+  router.post('/:id/heartbeat', requireDeviceToken, deviceRateLimiter, async (req, res) => {
     const { id } = req.params;
     const { battery_pct, firmware, ssid } = req.body;
 
     try {
-      // Auto-create device skeleton if not exists
       await pool.query(
         `INSERT INTO devices (id, battery_pct, firmware, ssid, last_seen)
          VALUES ($1, $2, $3, $4, NOW())
@@ -59,6 +79,46 @@ export default function deviceRouter(pool) {
                last_seen = NOW()`,
         [id, battery_pct ?? null, firmware || null, ssid || null]
       );
+
+      // Atomically consume pending_show_token — only one concurrent call can succeed
+      const { rows } = await pool.query(
+        `UPDATE devices
+         SET pending_show_token = FALSE
+         WHERE id = $1
+           AND pending_show_token = TRUE
+           AND display_token IS NOT NULL
+           AND display_token_expires > NOW()
+         RETURNING display_token`,
+        [id]
+      );
+
+      if (rows.length) {
+        res.json({ status: 'ok', show_token: rows[0].display_token });
+      } else {
+        res.json({ status: 'ok' });
+      }
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/device/:id/token/request  — open, rate-limited
+  // Web UI calls this when no cached token; generates a short-lived display_token
+  // which the device displays on screen. The real access_token is never transmitted.
+  router.post('/:id/token/request', tokenRequestDeviceLimiter, tokenRequestIpLimiter, async (req, res) => {
+    const { id } = req.params;
+    const displayToken = generateToken();
+    try {
+      const { rowCount } = await pool.query(
+        `UPDATE devices
+         SET pending_show_token = TRUE,
+             display_token = $2,
+             display_token_expires = NOW() + INTERVAL '90 seconds'
+         WHERE id = $1`,
+        [id, displayToken]
+      );
+      if (!rowCount) return res.status(404).json({ error: 'Device not found' });
       res.json({ status: 'ok' });
     } catch (err) {
       console.error(err);
@@ -66,8 +126,21 @@ export default function deviceRouter(pool) {
     }
   });
 
-  // PATCH /api/device/:id
-  router.patch('/:id', deviceRateLimiter, async (req, res) => {
+  // POST /api/device/:id/token/regenerate  — requires device token
+  router.post('/:id/token/regenerate', requireDeviceToken, async (req, res) => {
+    const { id } = req.params;
+    const newToken = generateToken();
+    try {
+      await pool.query('UPDATE devices SET access_token = $1 WHERE id = $2', [newToken, id]);
+      res.json({ access_token: newToken });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // PATCH /api/device/:id  (requires device token)
+  router.patch('/:id', requireDeviceToken, deviceRateLimiter, async (req, res) => {
     const { id } = req.params;
     const { language, display_type } = req.body;
     const allowed_languages = ['de', 'en', 'fr'];
@@ -83,7 +156,8 @@ export default function deviceRouter(pool) {
         `UPDATE devices SET
           language = COALESCE($2, language),
           display_type = COALESCE($3, display_type)
-         WHERE id = $1 RETURNING *`,
+         WHERE id = $1
+         RETURNING id, name, firmware, battery_pct, last_seen, is_setup, ssid, language, display_type`,
         [id, language || null, display_type || null]
       );
       if (!rows.length) return res.status(404).json({ error: 'Device not found' });
@@ -94,8 +168,8 @@ export default function deviceRouter(pool) {
     }
   });
 
-  // DELETE /api/device/:id
-  router.delete('/:id', deviceRateLimiter, async (req, res) => {
+  // DELETE /api/device/:id  (requires device token)
+  router.delete('/:id', requireDeviceToken, deviceRateLimiter, async (req, res) => {
     const { id } = req.params;
     try {
       const { rowCount } = await pool.query('DELETE FROM devices WHERE id = $1', [id]);
@@ -107,8 +181,8 @@ export default function deviceRouter(pool) {
     }
   });
 
-  // GET /api/device/:id/wifi
-  router.get('/:id/wifi', deviceRateLimiter, async (req, res) => {
+  // GET /api/device/:id/wifi  (requires device token)
+  router.get('/:id/wifi', requireDeviceToken, deviceRateLimiter, async (req, res) => {
     const { id } = req.params;
     try {
       const { rows } = await pool.query(
@@ -122,14 +196,13 @@ export default function deviceRouter(pool) {
     }
   });
 
-  // POST /api/device/:id/wifi
-  router.post('/:id/wifi', deviceRateLimiter, async (req, res) => {
+  // POST /api/device/:id/wifi  (requires device token)
+  router.post('/:id/wifi', requireDeviceToken, deviceRateLimiter, async (req, res) => {
     const { id } = req.params;
     const { ssid, password } = req.body;
 
-    if (!ssid || !password) {
+    if (!ssid || !password)
       return res.status(400).json({ error: 'ssid and password required' });
-    }
 
     try {
       const { rows } = await pool.query(
@@ -146,8 +219,8 @@ export default function deviceRouter(pool) {
     }
   });
 
-  // DELETE /api/device/:id/wifi/:networkId
-  router.delete('/:id/wifi/:networkId', deviceRateLimiter, async (req, res) => {
+  // DELETE /api/device/:id/wifi/:networkId  (requires device token)
+  router.delete('/:id/wifi/:networkId', requireDeviceToken, deviceRateLimiter, async (req, res) => {
     const { id, networkId } = req.params;
     try {
       const { rowCount } = await pool.query(

@@ -3,7 +3,7 @@ import { deviceRateLimiter } from '../middleware/rateLimiter.js';
 import { getDepartures, searchStops } from '../services/transitApi.js';
 import { getWeather } from '../services/weatherApi.js';
 
-export default function transitRouter(pool) {
+export default function transitRouter(pool, requireDeviceToken) {
   const router = Router();
 
   // GET /api/transit/departures?stopId=&api=vrr&deviceId=
@@ -35,7 +35,7 @@ export default function transitRouter(pool) {
   });
 
   // GET /api/transit/weather?lat=&lon=
-  router.get('/weather', async (req, res) => {
+  router.get('/weather', deviceRateLimiter, async (req, res) => {
     const { lat, lon } = req.query;
     if (!lat || !lon) return res.status(400).json({ error: 'lat and lon required' });
 
@@ -48,8 +48,8 @@ export default function transitRouter(pool) {
     }
   });
 
-  // GET /api/transit/analytics/:id
-  router.get('/analytics/:id', deviceRateLimiter, async (req, res) => {
+  // GET /api/transit/analytics/:id  (requires device token)
+  router.get('/analytics/:id', requireDeviceToken, deviceRateLimiter, async (req, res) => {
     const { id } = req.params;
     try {
       const { rows } = await pool.query(

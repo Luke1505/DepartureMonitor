@@ -72,6 +72,10 @@ export async function initDb(pool) {
     ALTER TABLE firmware_versions ADD COLUMN IF NOT EXISTS channel TEXT NOT NULL DEFAULT 'stable';
     ALTER TABLE devices ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'de';
     ALTER TABLE devices ADD COLUMN IF NOT EXISTS display_type TEXT NOT NULL DEFAULT 'bwr';
+    ALTER TABLE devices ADD COLUMN IF NOT EXISTS access_token TEXT;
+    ALTER TABLE devices ADD COLUMN IF NOT EXISTS pending_show_token BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE devices ADD COLUMN IF NOT EXISTS display_token TEXT;
+    ALTER TABLE devices ADD COLUMN IF NOT EXISTS display_token_expires TIMESTAMPTZ;
 
     CREATE TABLE IF NOT EXISTS build_jobs (
       id           TEXT PRIMARY KEY,

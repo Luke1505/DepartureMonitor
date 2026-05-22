@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { getFirmwareLatest, deleteDevice, saveDeviceSettings } from '../lib/api.js'
+import { getFirmwareLatest, deleteDevice, saveDeviceSettings, regenerateToken, storeDeviceToken, getDeviceToken, clearDeviceToken } from '../lib/api.js'
 import { useNavigate } from 'react-router-dom'
 
 const inputCls = 'w-full bg-[#f8f8fa] dark:bg-[#222] border border-[#eeeeee] dark:border-[#2e2e2e] text-[#111] dark:text-[#e4e4e7] rounded-lg px-3 py-2 text-xs outline-none focus:border-[#cc2200] transition-colors'
@@ -52,6 +52,14 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
   const [showQr, setShowQr] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
   const [resetting, setResetting] = useState(false)
+  const [tokenVisible, setTokenVisible] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
+  const [tokenFlash, setTokenFlash] = useState(null) // 'ok' | 'error'
+  const currentToken = getDeviceToken(deviceId)
+
+  function formatToken(t) {
+    return t ? `${t.slice(0, 4)}-${t.slice(4)}` : '????????'
+  }
 
   function updateSetting(key, value) {
     setSettings((prev) => ({ ...prev, [key]: value }))
@@ -86,10 +94,26 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
     setResetting(true)
     try {
       await deleteDevice(deviceId)
+      clearDeviceToken(deviceId)
       navigate('/')
     } catch (e) {
       console.error(e)
       setResetting(false)
+    }
+  }
+
+  async function handleRegenerateToken() {
+    setRegenerating(true)
+    setTokenFlash(null)
+    try {
+      const result = await regenerateToken(deviceId)
+      storeDeviceToken(deviceId, result.access_token)
+      setTokenFlash('ok')
+      setTimeout(() => setTokenFlash(null), 3000)
+    } catch {
+      setTokenFlash('error')
+    } finally {
+      setRegenerating(false)
     }
   }
 
@@ -274,6 +298,43 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
       >
         Speichern
       </button>
+
+      {/* Divider */}
+      <div className="border-t border-[#eeeeee] dark:border-[#2e2e2e] my-4" />
+
+      {/* Access Token */}
+      <div className="bg-white dark:bg-[#1a1a1a] border border-[#eeeeee] dark:border-[#2e2e2e] rounded-[14px] p-4">
+        <p className={labelCls}>Zugriffscode</p>
+        <p className="text-[0.68rem] text-[#aaa] dark:text-[#888] mt-1 mb-3">
+          Dieser Code schützt den Zugriff auf dein Gerät. Gib ihn auf einem neuen Gerät ein, um Zugang zu erhalten.
+        </p>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="flex-1 bg-[#f8f8fa] dark:bg-[#222] border border-[#eeeeee] dark:border-[#2e2e2e] rounded-lg px-3 py-2 font-mono text-sm tracking-widest text-center text-[#111] dark:text-[#e4e4e7]">
+            {tokenVisible ? formatToken(currentToken) : '????-????'}
+          </div>
+          <button
+            onClick={() => setTokenVisible((v) => !v)}
+            className="text-xs text-[#aaa] dark:text-[#888] border border-[#eeeeee] dark:border-[#2e2e2e] px-3 py-2 rounded-lg hover:border-[#cc2200] hover:text-[#cc2200] transition-colors"
+          >
+            {tokenVisible ? 'Verbergen' : 'Anzeigen'}
+          </button>
+        </div>
+        <button
+          onClick={handleRegenerateToken}
+          disabled={regenerating}
+          className="text-xs font-bold text-[#cc2200] border-[1.5px] border-[#fecaca] dark:border-[#cc220040] px-4 py-2 rounded-lg hover:bg-[#cc220008] disabled:opacity-50 transition-colors"
+        >
+          {regenerating ? 'Generiere...' : 'Neuen Code generieren'}
+        </button>
+        {tokenFlash === 'ok' && (
+          <p className="text-[0.65rem] text-green-600 dark:text-green-400 mt-2">
+            ✓ Neuer Code generiert. Bestehende Browser-Sitzungen werden abgemeldet.
+          </p>
+        )}
+        {tokenFlash === 'error' && (
+          <p className="text-[0.65rem] text-[#cc2200] mt-2">Fehler beim Generieren des Codes.</p>
+        )}
+      </div>
 
       {/* Divider */}
       <div className="border-t border-[#eeeeee] dark:border-[#2e2e2e] my-4" />

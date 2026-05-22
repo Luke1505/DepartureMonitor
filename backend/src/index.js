@@ -4,12 +4,12 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { createPool } from './db/schema.js';
-import { initDb } from './db/schema.js';
+import { createPool, initDb } from './db/schema.js';
 import deviceRouter from './routes/device.js';
 import configRouter from './routes/config.js';
 import transitRouter from './routes/transit.js';
 import firmwareRouter from './routes/firmware.js';
+import { makeDeviceAuthMiddleware } from './middleware/deviceAuth.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -17,6 +17,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const pool = createPool();
+
+const requireDeviceToken = makeDeviceAuthMiddleware(pool);
 
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
@@ -26,9 +28,18 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.use('/api/device', deviceRouter(pool));
-app.use('/api/device', configRouter(pool));
-app.use('/api/transit', transitRouter(pool));
+// Device routes:
+//   open:      GET / (list), POST /:id/register, POST /:id/token/request
+//   protected: GET /:id, PATCH /:id, DELETE /:id, POST /:id/heartbeat, wifi routes, token/regenerate
+app.use('/api/device', deviceRouter(pool, requireDeviceToken));
+
+// Config routes:
+//   open:      GET /:id/config  (device fetches on boot)
+//   protected: POST /:id/config (web UI saves)
+app.use('/api/device', configRouter(pool, requireDeviceToken));
+
+// Transit + firmware device endpoints — always open (device uses these)
+app.use('/api/transit', transitRouter(pool, requireDeviceToken));
 app.use('/api/firmware', firmwareRouter(pool));
 
 // Serve frontend static files
