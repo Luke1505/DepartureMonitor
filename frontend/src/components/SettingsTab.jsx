@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { Copy, Check } from 'lucide-react'
+import { Copy, Check, Zap } from 'lucide-react'
 import { getFirmwareLatest, deleteDevice, saveDeviceSettings, regenerateToken, storeDeviceToken, getDeviceToken, clearDeviceToken, removeKnownDevice } from '../lib/api.js'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { showToast } from '../lib/toast.js'
 
 const inputCls = 'w-full bg-[#f8f8fa] dark:bg-[#222] border border-[#eeeeee] dark:border-[#2e2e2e] text-[#111] dark:text-[#e4e4e7] rounded-lg px-3 py-2 text-xs outline-none focus:border-[#cc2200] transition-colors'
@@ -160,9 +160,9 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
               value={deviceSettings.language}
               onChange={(e) => updateDeviceSetting('language', e.target.value)}
             >
-              <option value="de">🇩🇪 Deutsch</option>
-              <option value="en">🇬🇧 English</option>
-              <option value="fr">🇫🇷 Français</option>
+              <option value="de">Deutsch (DE)</option>
+              <option value="en">English (EN)</option>
+              <option value="fr">Français (FR)</option>
             </select>
           </SettingsRow>
           <SettingsRow label="Display-Typ">
@@ -244,10 +244,17 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
           <button
             onClick={checkFirmware}
             disabled={checkingFw}
-            className="bg-[#cc2200] hover:bg-[#aa1800] disabled:opacity-50 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors"
+            className="bg-[#cc2200] hover:bg-[#aa1800] disabled:opacity-50 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors active:scale-[0.98]"
           >
             {checkingFw ? 'Prüfe...' : 'Prüfen'}
           </button>
+          <Link
+            to={`/flash/${deviceId}`}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-[#aaa] dark:text-[#888] hover:text-[#cc2200] transition-colors"
+          >
+            <Zap size={12} />
+            Via USB flashen
+          </Link>
 
           {firmwareInfo && (
             <div className="mt-2">
@@ -346,13 +353,13 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
         <button
           onClick={handleRegenerateToken}
           disabled={regenerating}
-          className="text-xs font-bold text-[#cc2200] border-[1.5px] border-[#fecaca] dark:border-[#cc220040] px-4 py-2 rounded-lg hover:bg-[#cc220008] disabled:opacity-50 transition-colors"
+          className="text-xs font-bold text-[#cc2200] border-[1.5px] border-[#fecaca] dark:border-[#cc220040] px-4 py-2 rounded-lg hover:bg-[#cc220008] disabled:opacity-50 transition-colors active:scale-[0.98]"
         >
           {regenerating ? 'Generiere...' : 'Neuen Code generieren'}
         </button>
         {tokenFlash === 'ok' && (
           <p className="text-[0.65rem] text-green-600 dark:text-green-400 mt-2">
-            ✓ Neuer Code generiert. Bestehende Browser-Sitzungen werden abgemeldet.
+            Neuer Code generiert. Bestehende Browser-Sitzungen werden abgemeldet.
           </p>
         )}
         {tokenFlash === 'error' && (
@@ -369,7 +376,7 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
         {!confirmReset ? (
           <button
             onClick={() => setConfirmReset(true)}
-            className="mt-2 text-xs font-bold text-[#cc2200] border-[1.5px] border-[#fecaca] dark:border-[#cc220040] px-4 py-2 rounded-lg hover:bg-[#cc220008] transition-colors"
+            className="mt-2 text-xs font-bold text-[#cc2200] border-[1.5px] border-[#fecaca] dark:border-[#cc220040] px-4 py-2 rounded-lg hover:bg-[#cc220008] transition-colors active:scale-[0.98]"
           >
             Factory Reset
           </button>
@@ -382,13 +389,13 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
               <button
                 onClick={handleReset}
                 disabled={resetting}
-                className="bg-[#cc2200] hover:bg-[#aa1800] disabled:opacity-50 text-white text-xs font-bold px-4 py-2 rounded-lg"
+                className="bg-[#cc2200] hover:bg-[#aa1800] disabled:opacity-50 text-white text-xs font-bold px-4 py-2 rounded-lg active:scale-[0.98]"
               >
                 {resetting ? 'Lösche...' : 'Ja, löschen'}
               </button>
               <button
                 onClick={() => setConfirmReset(false)}
-                className="text-xs font-bold text-[#aaa] border border-[#eeeeee] dark:border-[#2e2e2e] px-4 py-2 rounded-lg hover:text-[#111] dark:hover:text-[#e4e4e7]"
+                className="text-xs font-bold text-[#aaa] border border-[#eeeeee] dark:border-[#2e2e2e] px-4 py-2 rounded-lg hover:text-[#111] dark:hover:text-[#e4e4e7] active:scale-[0.98]"
               >
                 Abbrechen
               </button>

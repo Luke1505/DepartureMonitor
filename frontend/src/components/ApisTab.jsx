@@ -22,7 +22,7 @@ function AmberBadge({ children }) {
 
 function StatusDot({ active }) {
   return (
-    <span className={`inline-block w-2 h-2 rounded-full ${active ? 'bg-green-500' : 'bg-yellow-400'}`} />
+    <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${active ? 'bg-green-500 dot-pulse' : 'bg-yellow-400'}`} />
   )
 }
 
@@ -219,7 +219,7 @@ export default function ApisTab({ config, onSave }) {
           <p className="text-sm font-semibold text-[#111] dark:text-[#e4e4e7]">Eigene APIs</p>
           <button
             onClick={addCustomApi}
-            className="flex items-center gap-1 text-[0.65rem] font-bold text-[#cc2200] hover:text-[#aa1800]"
+            className="flex items-center gap-1 text-[0.65rem] font-bold text-[#cc2200] hover:text-[#aa1800] active:scale-90 transition-transform"
           >
             <Plus size={12} /> Hinzufügen
           </button>
@@ -230,12 +230,12 @@ export default function ApisTab({ config, onSave }) {
         )}
 
         {(apis.custom || []).map((api, i) => (
-          <div key={i} className="border border-[#eeeeee] dark:border-[#2e2e2e] rounded-xl p-3 mb-2 space-y-2">
+          <div key={i} className="border border-[#eeeeee] dark:border-[#2e2e2e] rounded-xl p-3 mb-2 space-y-2 animate-fade-in-up">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-[#111] dark:text-[#e4e4e7]">
                 {api.name || `API ${i + 1}`}
               </span>
-              <button onClick={() => deleteCustomApi(i)} className="text-[#aaa] hover:text-[#cc2200]">
+              <button onClick={() => deleteCustomApi(i)} className="text-[#aaa] hover:text-[#cc2200] active:scale-90 transition-transform">
                 <X size={14} />
               </button>
             </div>

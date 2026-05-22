@@ -96,7 +96,13 @@ function DeparturePreview({ stopId, api, deviceId }) {
     )
   }
   if (state === 'loading') {
-    return <p className="text-xs text-[#aaa]">Lade…</p>
+    return (
+      <div className="space-y-1">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-7 skeleton" style={{ animationDelay: `${i * 80}ms` }} />
+        ))}
+      </div>
+    )
   }
   if (state === 'error') {
     return (
@@ -217,7 +223,7 @@ function StationEditForm({ station, onChange, onDelete, deviceId }) {
             <button
               key={id}
               onClick={() => onChange({ icon: id })}
-              className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center border-2 transition-colors ${
+              className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center border-2 transition-colors active:scale-90 transition-transform ${
                 station.icon === id
                   ? 'border-[#cc2200] text-[#cc2200] bg-[#cc220010]'
                   : 'border-transparent text-[#cc2200] hover:border-[#cc2200] bg-[#f8f8fa] dark:bg-[#222]'
@@ -269,7 +275,7 @@ function StationEditForm({ station, onChange, onDelete, deviceId }) {
           </button>
         </div>
         {stopResults.length > 0 && (
-          <div className="mt-1 bg-white dark:bg-[#1a1a1a] border border-[#eeeeee] dark:border-[#2e2e2e] rounded-lg shadow-lg overflow-hidden">
+          <div className="mt-1 bg-white dark:bg-[#1a1a1a] border border-[#eeeeee] dark:border-[#2e2e2e] rounded-lg shadow-lg overflow-hidden animate-fade-in">
             {stopResults.slice(0, 8).map((stop) => (
               <button
                 key={stop.id}
@@ -304,7 +310,7 @@ function StationEditForm({ station, onChange, onDelete, deviceId }) {
               <button
                 key={t}
                 onClick={() => toggleType(t)}
-                className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
+                className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors active:scale-90 transition-transform ${
                   on
                     ? 'bg-[#111] dark:bg-white text-white dark:text-[#111] border-[#111] dark:border-white'
                     : 'bg-transparent text-[#aaa] dark:text-[#888] border-[#ddd] dark:border-[#2e2e2e]'
@@ -392,7 +398,7 @@ function SortableStation({ station, index, isExpanded, onToggle, onChange, onDel
     <div
       ref={setNodeRef}
       style={style}
-      className="bg-white dark:bg-[#1a1a1a] border border-[#eeeeee] dark:border-[#2e2e2e] rounded-[14px] p-3 mb-2"
+      className="bg-white dark:bg-[#1a1a1a] border border-[#eeeeee] dark:border-[#2e2e2e] hover:border-[#cc220030] dark:hover:border-[#cc220030] transition-colors rounded-[14px] p-3 mb-2 animate-fade-in-up"
     >
       <div className="flex items-center gap-2">
         {/* Drag handle */}
@@ -434,7 +440,7 @@ function SortableStation({ station, index, isExpanded, onToggle, onChange, onDel
         {/* Edit button */}
         <button
           onClick={onToggle}
-          className={`p-1.5 rounded-lg transition-colors ${
+          className={`p-1.5 rounded-lg transition-colors active:scale-95 transition-transform ${
             isExpanded
               ? 'bg-[#cc220015] text-[#cc2200]'
               : 'text-[#aaa] dark:text-[#888] hover:text-[#cc2200]'
@@ -446,19 +452,29 @@ function SortableStation({ station, index, isExpanded, onToggle, onChange, onDel
         {/* Delete */}
         <button
           onClick={onDelete}
-          className="p-1.5 text-[#aaa] dark:text-[#888] hover:text-[#cc2200] transition-colors"
+          className="p-1.5 text-[#aaa] dark:text-[#888] hover:text-[#cc2200] transition-colors active:scale-95 transition-transform"
         >
           <X size={14} />
         </button>
       </div>
 
       {isExpanded && (
-        <StationEditForm
-          station={station}
-          onChange={(updates) => onChange({ ...station, ...updates })}
-          onDelete={onDelete}
-          deviceId={deviceId}
-        />
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateRows: isExpanded ? '1fr' : '0fr',
+            transition: 'grid-template-rows 0.28s cubic-bezier(0.22, 1, 0.36, 1)',
+          }}
+        >
+          <div className="overflow-hidden">
+            <StationEditForm
+              station={station}
+              onChange={(updates) => onChange({ ...station, ...updates })}
+              onDelete={onDelete}
+              deviceId={deviceId}
+            />
+          </div>
+        </div>
       )}
     </div>
   )
@@ -562,7 +578,7 @@ export default function StationsTab({ config, deviceId, onSave }) {
           <button
             onClick={addStation}
             disabled={!newStation.stopId}
-            className="mt-3 w-full bg-[#cc2200] hover:bg-[#aa1800] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg py-2"
+            className="mt-3 w-full bg-[#cc2200] hover:bg-[#aa1800] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg py-2 active:scale-[0.98]"
           >
             Hinzufügen
           </button>
@@ -570,7 +586,7 @@ export default function StationsTab({ config, deviceId, onSave }) {
       ) : (
         <button
           onClick={() => setAdding(true)}
-          className="w-full border-2 border-dashed border-[#ddd] dark:border-[#2e2e2e] text-[#aaa] dark:text-[#888] hover:border-[#cc2200] hover:text-[#cc2200] rounded-[14px] py-4 text-xs font-semibold transition-colors"
+          className="w-full border-2 border-dashed border-[#ddd] dark:border-[#2e2e2e] text-[#aaa] dark:text-[#888] hover:border-[#cc2200] hover:text-[#cc2200] rounded-[14px] py-4 text-xs font-semibold transition-colors active:scale-[0.99]"
         >
           + Haltestelle hinzufügen
         </button>

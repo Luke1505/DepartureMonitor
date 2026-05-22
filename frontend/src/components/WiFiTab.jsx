@@ -54,7 +54,11 @@ export default function WiFiTab({ deviceId, device }) {
         <p className={labelCls}>Gespeicherte Netzwerke</p>
 
         {loading ? (
-          <p className="text-[#aaa] text-xs py-2">Laden...</p>
+          <div className="space-y-2 mt-2">
+            {[0, 1].map((i) => (
+              <div key={i} className="h-8 skeleton" style={{ animationDelay: `${i * 80}ms` }} />
+            ))}
+          </div>
         ) : networks.length === 0 && !device?.ssid ? (
           <p className="text-[#aaa] dark:text-[#888] text-xs py-2">Keine Netzwerke gespeichert</p>
         ) : (
@@ -71,7 +75,7 @@ export default function WiFiTab({ deviceId, device }) {
             {networks.map((network) => (
               <div
                 key={network.id}
-                className="flex items-center gap-2 py-1.5 border-b border-[#f0f0f0] dark:border-[#222] last:border-0"
+                className="flex items-center gap-2 py-1.5 border-b border-[#f0f0f0] dark:border-[#222] last:border-0 animate-fade-in"
               >
                 <Wifi size={14} className={`flex-shrink-0 ${network.ssid === device?.ssid ? 'text-[#22c55e]' : 'text-[#aaa] dark:text-[#888]'}`} />
                 <span className="flex-1 text-xs font-medium text-[#111] dark:text-[#e4e4e7]">
@@ -82,7 +86,7 @@ export default function WiFiTab({ deviceId, device }) {
                 </span>
                 <button
                   onClick={() => handleDelete(network.id)}
-                  className="text-[#aaa] hover:text-[#cc2200] transition-colors"
+                  className="text-[#aaa] hover:text-[#cc2200] transition-colors active:scale-90"
                 >
                   <X size={14} />
                 </button>
@@ -123,7 +127,7 @@ export default function WiFiTab({ deviceId, device }) {
           <button
             type="submit"
             disabled={adding || !ssid.trim() || !password.trim()}
-            className="bg-[#cc2200] hover:bg-[#aa1800] disabled:opacity-50 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors"
+            className="bg-[#cc2200] hover:bg-[#aa1800] disabled:opacity-50 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors active:scale-[0.98]"
           >
             {adding ? 'Wird hinzugefügt...' : '+ Hinzufügen'}
           </button>

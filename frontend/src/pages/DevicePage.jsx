@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { KeyRound, RefreshCw, MonitorSmartphone } from 'lucide-react'
+import { KeyRound, RefreshCw, MonitorSmartphone, CheckCircle } from 'lucide-react'
 import { getDevice, getConfig, saveConfig, requestTokenDisplay, getDeviceToken, storeDeviceToken, addKnownDevice } from '../lib/api.js'
 import { showToast } from '../lib/toast.js'
 import DeviceHeader from '../components/DeviceHeader.jsx'
@@ -113,10 +113,10 @@ function UnlockScreen({ deviceId, onUnlocked }) {
             <button
               onClick={handleRequest}
               disabled={requesting || requested}
-              className="w-full flex items-center justify-center gap-2 bg-[#f8f8fa] dark:bg-[#222] border border-[#eeeeee] dark:border-[#2e2e2e] text-[#111] dark:text-[#e4e4e7] text-xs font-semibold px-4 py-2.5 rounded-lg hover:border-[#cc2200] hover:text-[#cc2200] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full flex items-center justify-center gap-2 bg-[#f8f8fa] dark:bg-[#222] border border-[#eeeeee] dark:border-[#2e2e2e] text-[#111] dark:text-[#e4e4e7] text-xs font-semibold px-4 py-2.5 rounded-lg hover:border-[#cc2200] hover:text-[#cc2200] disabled:opacity-50 disabled:cursor-not-allowed transition-colors active:scale-[0.98]"
             >
               <MonitorSmartphone size={14} />
-              {requested ? `✓ Code wird angezeigt (${countdown}s)` : requesting ? 'Sende...' : 'Code auf Gerät anzeigen'}
+              {requested ? <span className="flex items-center gap-1.5"><CheckCircle size={13} />{`Code wird angezeigt (${countdown}s)`}</span> : requesting ? 'Sende...' : 'Code auf Gerät anzeigen'}
             </button>
             {requested && (
               <p className="text-[0.65rem] text-[#aaa] dark:text-[#888] mt-1.5 text-center">
@@ -147,7 +147,7 @@ function UnlockScreen({ deviceId, onUnlocked }) {
               <button
                 type="submit"
                 disabled={checking || tokenInput.replace(/-/g, '').length < 8}
-                className="w-full bg-[#cc2200] hover:bg-[#aa1800] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2.5 rounded-lg transition-colors"
+                className="w-full bg-[#cc2200] hover:bg-[#aa1800] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2.5 rounded-lg transition-colors active:scale-[0.98]"
               >
                 {checking ? 'Prüfe...' : 'Entsperren'}
               </button>
@@ -222,7 +222,7 @@ export default function DevicePage() {
     return (
       <div className="min-h-screen bg-[#f0f2f5] dark:bg-[#111] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-6 h-6 border-2 border-[#cc2200] border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-2 border-[#cc2200]/20 border-t-[#cc2200] rounded-full animate-spin" />
           <p className="text-[#aaa] dark:text-[#888] text-xs">Lade Gerät…</p>
         </div>
       </div>
@@ -236,7 +236,7 @@ export default function DevicePage() {
   if (error) {
     return (
       <div className="min-h-screen bg-[#f0f2f5] dark:bg-[#111] flex items-center justify-center p-4">
-        <div className="text-center">
+        <div className="text-center animate-scale-in">
           <p className="text-[#cc2200] text-sm font-medium mb-2">Fehler</p>
           <p className="text-[#aaa] text-xs">{error}</p>
         </div>
@@ -267,16 +267,18 @@ export default function DevicePage() {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-4">
-        {activeTab === 'stations' && (
-          <StationsTab config={config} deviceId={id} onSave={handleSave} />
-        )}
-        {activeTab === 'wifi' && <WiFiTab deviceId={id} device={device} />}
-        {activeTab === 'apis' && (
-          <ApisTab config={config} deviceId={id} onSave={handleSave} />
-        )}
-        {activeTab === 'settings' && (
-          <SettingsTab config={config} device={device} deviceId={id} onSave={handleSave} />
-        )}
+        <div key={activeTab} className="animate-fade-in-up">
+          {activeTab === 'stations' && (
+            <StationsTab config={config} deviceId={id} onSave={handleSave} />
+          )}
+          {activeTab === 'wifi' && <WiFiTab deviceId={id} device={device} />}
+          {activeTab === 'apis' && (
+            <ApisTab config={config} deviceId={id} onSave={handleSave} />
+          )}
+          {activeTab === 'settings' && (
+            <SettingsTab config={config} device={device} deviceId={id} onSave={handleSave} />
+          )}
+        </div>
       </div>
     </div>
   )

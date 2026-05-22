@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
-import { CheckCircle, AlertTriangle, Zap, Usb, Shield, Download, Moon, Sun } from 'lucide-react'
+import { CheckCircle, AlertTriangle, Zap, Usb, Shield, Download, Moon, Sun, ArrowLeft } from 'lucide-react'
 import { getDevice, getConfig, getFirmwareLatest } from '../lib/api.js'
 import { useDarkMode } from '../App.jsx'
 
@@ -23,7 +23,7 @@ function compareVersions(a, b) {
 
 function StepBadge({ n, done, active }) {
   if (done) return (
-    <span className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
+    <span className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0 animate-scale-in">
       <CheckCircle size={14} className="text-white" />
     </span>
   )
@@ -31,7 +31,7 @@ function StepBadge({ n, done, active }) {
     <span className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border-2 ${
       active
         ? 'border-[#cc2200] text-[#cc2200]'
-        : 'border-[#444] text-[#666]'
+        : 'border-[#ccc] dark:border-[#444] text-[#aaa] dark:text-[#666]'
     }`}>{n}</span>
   )
 }
@@ -161,39 +161,39 @@ export default function FlashPage() {
     ? compareVersions(device.firmware, firmware.version)
     : false
 
-  const cardCls = 'bg-[#1a1a1a] border border-[#2e2e2e] rounded-[14px] p-5'
-  const labelCls = 'block text-[0.58rem] font-bold tracking-[0.12em] uppercase text-[#555] mb-1'
+  const cardCls = 'bg-white dark:bg-[#1a1a1a] border border-[#eeeeee] dark:border-[#2e2e2e] rounded-[14px] p-5'
+  const labelCls = 'block text-[0.58rem] font-bold tracking-[0.12em] uppercase text-[#ccc] dark:text-[#555] mb-1'
 
   return (
-    <div className="min-h-screen bg-[#111] text-[#e4e4e7]">
+    <div className="min-h-screen bg-[#f0f2f5] dark:bg-[#111] text-[#111] dark:text-[#e4e4e7]">
       {/* Nav */}
-      <header className="sticky top-0 z-20 bg-[#1a1a1a] border-b border-[#2e2e2e] h-14 flex items-center px-4 gap-3">
+      <header className="sticky top-0 z-20 bg-white dark:bg-[#1a1a1a] border-b border-[#eeeeee] dark:border-[#2e2e2e] h-14 flex items-center px-4 gap-3">
         <span className="w-2 h-2 rounded-full bg-[#cc2200] flex-shrink-0" />
-        <span className="text-sm font-semibold flex-1">Transit Keychain</span>
+        <span className="text-sm font-semibold flex-1 text-[#111] dark:text-[#e4e4e7]">DepartureMonitor</span>
         {deviceId && (
           <Link
             to={`/device/${deviceId}`}
-            className="text-xs text-[#888] hover:text-[#e4e4e7] transition-colors"
+            className="flex items-center gap-1 text-xs text-[#aaa] dark:text-[#888] hover:text-[#111] dark:hover:text-[#e4e4e7] transition-colors"
           >
-            ← Back to device
+            <ArrowLeft size={14} /> Zurück
           </Link>
         )}
         <button
           onClick={toggleDarkMode}
-          className="p-1.5 rounded-lg text-[#888] hover:text-[#e4e4e7] hover:bg-[#222] transition-colors"
+          className="p-1.5 rounded-lg text-[#aaa] dark:text-[#888] hover:text-[#111] dark:hover:text-[#e4e4e7] hover:bg-[#f0f2f5] dark:hover:bg-[#222] transition-colors"
           aria-label="Toggle dark mode"
         >
           {darkMode ? <Sun size={16} /> : <Moon size={16} />}
         </button>
       </header>
 
-      <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
+      <div className="max-w-lg mx-auto px-4 py-6 space-y-4 animate-fade-in-up">
         {/* Header card */}
         <div className={cardCls}>
           <div className="flex items-start gap-3">
             <Zap size={24} className="text-[#cc2200] flex-shrink-0 mt-0.5" />
             <div>
-              <h1 className="text-lg font-bold text-white">Flash Firmware</h1>
+              <h1 className="text-lg font-bold text-[#111] dark:text-white">Flash Firmware</h1>
               <p className="text-xs text-[#888] mt-0.5">
                 Connect your DepartureMonitor via USB-C to flash
               </p>
@@ -209,7 +209,7 @@ export default function FlashPage() {
                 className={`px-4 py-1.5 rounded-full text-xs font-bold capitalize transition-colors ${
                   channel === ch
                     ? 'bg-[#cc2200] text-white'
-                    : 'bg-[#222] text-[#888] hover:text-[#e4e4e7]'
+                    : 'bg-[#f8f8fa] dark:bg-[#222] text-[#888] hover:text-[#111] dark:hover:text-[#e4e4e7]'
                 }`}
               >
                 {ch}
@@ -228,7 +228,7 @@ export default function FlashPage() {
           ) : firmware ? (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-white font-bold font-mono">{firmware.version}</span>
+                <span className="text-[#111] dark:text-white font-bold font-mono">{firmware.version}</span>
                 <span className="text-[0.6rem] font-bold bg-[#cc220020] text-[#cc2200] px-2 py-0.5 rounded-full capitalize">
                   {channel}
                 </span>
@@ -263,7 +263,7 @@ export default function FlashPage() {
             ) : device ? (
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-white font-semibold text-sm">{device.name || 'Unbenannt'}</span>
+                  <span className="text-[#111] dark:text-white font-semibold text-sm">{device.name || 'Unbenannt'}</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <span className="text-[#888]">Aktuelle Firmware:</span>
@@ -307,7 +307,7 @@ export default function FlashPage() {
             <div className="flex gap-3">
               <StepBadge n={1} done={backupDone} active={!backupDone} />
               <div className="flex-1 min-w-0">
-                <p className={`text-sm font-semibold ${backupDone ? 'text-[#888]' : 'text-white'}`}>
+                <p className={`text-sm font-semibold ${backupDone ? 'text-[#888]' : 'text-[#111] dark:text-white'}`}>
                   Config sichern
                 </p>
                 {!deviceId ? (
@@ -316,8 +316,8 @@ export default function FlashPage() {
                   </p>
                 ) : backupDone ? (
                   <div className="mt-2 space-y-2">
-                    <p className="text-xs text-green-400 font-medium flex items-center gap-1">
-                      <CheckCircle size={13} /> Config backed up ✓
+                    <p className="text-xs text-green-600 dark:text-green-400 font-medium flex items-center gap-1">
+                      <CheckCircle size={13} /> Config gesichert
                     </p>
                     {backupConfig && (
                       <>
@@ -326,7 +326,7 @@ export default function FlashPage() {
                         </div>
                         <button
                           onClick={downloadJson}
-                          className="flex items-center gap-1.5 text-xs text-[#cc2200] hover:text-[#aa1800] font-medium"
+                          className="flex items-center gap-1.5 text-xs text-[#cc2200] hover:text-[#aa1800] font-medium active:scale-[0.98] transition-transform"
                         >
                           <Download size={13} /> Download JSON
                         </button>
@@ -338,7 +338,7 @@ export default function FlashPage() {
                     <button
                       onClick={handleBackup}
                       disabled={backupLoading}
-                      className="bg-[#cc2200] hover:bg-[#aa1800] disabled:opacity-50 text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors"
+                      className="bg-[#cc2200] hover:bg-[#aa1800] disabled:opacity-50 text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors active:scale-[0.98]"
                     >
                       {backupLoading ? 'Sichern...' : 'Config sichern'}
                     </button>
@@ -351,7 +351,7 @@ export default function FlashPage() {
             <div className="flex gap-3">
               <StepBadge n={2} done={false} active={backupDone} />
               <div className="flex-1">
-                <p className={`text-sm font-semibold ${backupDone ? 'text-white' : 'text-[#666]'}`}>
+                <p className={`text-sm font-semibold ${backupDone ? 'text-[#111] dark:text-white' : 'text-[#aaa] dark:text-[#666]'}`}>
                   USB-C verbinden
                 </p>
                 <div className="flex items-center gap-2 mt-1.5">
@@ -367,14 +367,14 @@ export default function FlashPage() {
             <div className="flex gap-3">
               <StepBadge n={3} done={flashState === 'success'} active={backupDone} />
               <div className="flex-1">
-                <p className={`text-sm font-semibold ${backupDone ? 'text-white' : 'text-[#666]'}`}>
+                <p className={`text-sm font-semibold ${backupDone ? 'text-[#111] dark:text-white' : 'text-[#aaa] dark:text-[#666]'}`}>
                   Firmware flashen
                 </p>
                 <div className="mt-2">
                   {flashState === 'success' ? (
                     <div className="space-y-2">
-                      <p className="text-green-400 font-bold text-sm flex items-center gap-2">
-                        <CheckCircle size={16} /> Flash complete! 🎉
+                      <p className="text-green-600 dark:text-green-400 font-bold text-sm flex items-center gap-2">
+                        <CheckCircle size={16} /> Flash abgeschlossen!
                       </p>
                       {deviceId ? (
                         <p className="text-xs text-[#888]">
@@ -434,7 +434,7 @@ export default function FlashPage() {
                         ref={espButtonRef}
                         manifest={MANIFEST_URL(channel)}
                       >
-                        <span slot="activate">⚡ Flash Firmware</span>
+                        <span slot="activate">Firmware flashen</span>
                         <span slot="unsupported">
                           Web Serial nicht unterstützt
                         </span>
@@ -444,7 +444,7 @@ export default function FlashPage() {
                       </esp-web-install-button>
                     </div>
                   ) : (
-                    <p className="text-xs text-[#555]">
+                    <p className="text-xs text-[#aaa] dark:text-[#555]">
                       Zuerst Config sichern
                     </p>
                   )}
@@ -457,7 +457,7 @@ export default function FlashPage() {
         {/* Info note */}
         <div className="flex items-start gap-2 px-1">
           <Shield size={13} className="text-[#555] flex-shrink-0 mt-0.5" />
-          <p className="text-[0.65rem] text-[#666]">
+          <p className="text-[0.65rem] text-[#555] dark:text-[#666]">
             Works in Chrome &amp; Edge only. Web Serial not supported in Firefox/Safari.
           </p>
         </div>

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Battery, BatteryLow, Sun, Moon, Zap, ArrowLeft } from 'lucide-react'
+import { Battery, BatteryLow, Sun, Moon, Zap, ArrowLeft, CheckCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useDarkMode } from '../App.jsx'
 import { registerDevice, getFirmwareLatest } from '../lib/api.js'
@@ -122,7 +122,7 @@ export default function DeviceHeader({ device, deviceId, flash, onDeviceUpdate }
             {firmwareOutdated && (
               <Link
                 to={`/flash/${deviceId}`}
-                className="flex items-center gap-0.5 text-[0.6rem] font-bold bg-[#cc220018] text-[#cc2200] hover:bg-[#cc220030] px-1.5 py-0.5 rounded transition-colors"
+                className="flex items-center gap-0.5 text-[0.6rem] font-bold bg-[#cc220018] text-[#cc2200] hover:bg-[#cc220030] px-1.5 py-0.5 rounded transition-colors hover:scale-105 active:scale-95 transition-transform"
                 title={`Update auf ${latestFirmware.version}`}
               >
                 <Zap size={10} /> Update
@@ -142,7 +142,7 @@ export default function DeviceHeader({ device, deviceId, flash, onDeviceUpdate }
         {/* Dark mode toggle */}
         <button
           onClick={toggleDarkMode}
-          className="p-1.5 rounded-lg text-[#aaa] dark:text-[#888] hover:text-[#111] dark:hover:text-[#e4e4e7] hover:bg-[#f0f2f5] dark:hover:bg-[#222] transition-colors"
+          className="p-1.5 rounded-lg text-[#aaa] dark:text-[#888] hover:text-[#111] dark:hover:text-[#e4e4e7] hover:bg-[#f0f2f5] dark:hover:bg-[#222] transition-colors hover:scale-110 transition-transform duration-200"
           aria-label="Toggle dark mode"
         >
           {darkMode ? <Sun size={16} /> : <Moon size={16} />}
@@ -151,9 +151,10 @@ export default function DeviceHeader({ device, deviceId, flash, onDeviceUpdate }
 
       {/* Saved flash overlay */}
       {flash && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <span className="bg-[#cc2200] text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg animate-pulse">
-            Gespeichert ✓
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none animate-fade-in">
+          <span className="bg-[#cc2200] text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1.5">
+            <CheckCircle size={12} />
+            Gespeichert
           </span>
         </div>
       )}

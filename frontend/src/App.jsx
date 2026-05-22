@@ -43,7 +43,7 @@ function HomePage() {
         </div>
         <button
           onClick={toggleDarkMode}
-          className="p-1.5 rounded-lg text-[#aaa] dark:text-[#888] hover:text-[#111] dark:hover:text-[#e4e4e7] hover:bg-white dark:hover:bg-[#222] transition-colors"
+          className="p-1.5 rounded-lg text-[#aaa] dark:text-[#888] hover:text-[#111] dark:hover:text-[#e4e4e7] hover:bg-white dark:hover:bg-[#222] transition-colors hover:scale-110 transition-transform duration-200"
           aria-label="Toggle dark mode"
         >
           {darkMode ? <Sun size={16} /> : <Moon size={16} />}
@@ -51,7 +51,7 @@ function HomePage() {
       </div>
 
       {/* Center content */}
-      <div className="flex-1 flex flex-col items-center justify-center p-6 gap-5">
+      <div className="flex-1 flex flex-col items-center justify-center p-6 gap-5 animate-fade-in-up">
         <div className="text-center">
           <h1 className="text-[#111] dark:text-[#e4e4e7] text-2xl font-bold mb-1">DepartureMonitor</h1>
           <p className="text-[#aaa] dark:text-[#888] text-sm">ESP32 ÖPNV Abfahrtsanzeige</p>
@@ -59,8 +59,10 @@ function HomePage() {
 
         <div className="w-full max-w-xs space-y-2">
           {devices === null ? (
-            <div className="bg-white dark:bg-[#1a1a1a] border border-[#eeeeee] dark:border-[#2e2e2e] rounded-[14px] p-4 text-center">
-              <p className="text-xs text-[#aaa]">Lade Geräte…</p>
+            <div className="space-y-2">
+              {[0, 1].map((i) => (
+                <div key={i} className="h-[62px] skeleton rounded-[14px]" style={{ animationDelay: `${i * 100}ms` }} />
+              ))}
             </div>
           ) : devices.length === 0 ? (
             <div className="bg-white dark:bg-[#1a1a1a] border border-[#eeeeee] dark:border-[#2e2e2e] rounded-[14px] p-5 text-center space-y-2">
@@ -70,11 +72,12 @@ function HomePage() {
               </p>
             </div>
           ) : (
-            devices.map((d) => (
+            devices.map((d, i) => (
               <Link
                 key={d.id}
                 to={`/device/${d.id}`}
-                className="flex items-center gap-3 bg-white dark:bg-[#1a1a1a] border border-[#eeeeee] dark:border-[#2e2e2e] rounded-[14px] p-4 hover:border-[#cc2200] dark:hover:border-[#cc2200] transition-colors group"
+                className="flex items-center gap-3 bg-white dark:bg-[#1a1a1a] border border-[#eeeeee] dark:border-[#2e2e2e] rounded-[14px] p-4 hover:border-[#cc2200] dark:hover:border-[#cc2200] transition-colors group animate-fade-in-up active:scale-[0.98] transition-transform"
+                style={{ animationDelay: `${i * 60}ms` }}
               >
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-[#111] dark:text-[#e4e4e7] truncate">
@@ -98,7 +101,7 @@ function HomePage() {
 
           <Link
             to="/flash"
-            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-[10px] border border-dashed border-[#ddd] dark:border-[#2e2e2e] text-xs text-[#aaa] dark:text-[#555] hover:border-[#cc2200] hover:text-[#cc2200] dark:hover:border-[#cc2200] dark:hover:text-[#cc2200] transition-colors"
+            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-[10px] border border-dashed border-[#ddd] dark:border-[#2e2e2e] text-xs text-[#aaa] dark:text-[#555] hover:border-[#cc2200] hover:text-[#cc2200] dark:hover:border-[#cc2200] dark:hover:text-[#cc2200] transition-colors active:scale-[0.97] transition-transform"
           >
             <Zap size={12} /> Neues Gerät flashen
           </Link>
