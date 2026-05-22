@@ -364,15 +364,13 @@ inline void displayInit() {
 // ── Loading / boot splash ─────────────────────────────────────────────────────
 
 inline void displayShowLoading(const char* message = "Loading...") {
-    DISPLAY_DRAW_BEGIN(true)
+    DISPLAY_DRAW_BEGIN(false)
         display.setFont(&FreeSansBold9pt7b);
-        display.setTextColor(GxEPD_RED);
+        display.setTextColor(GxEPD_BLACK);
         display.setCursor(4, 20);
         display.print("Transit Keychain");
-        display.setFont(&FreeSansBold9pt7b);
         display.setCursor(4, 40);
         display.print(message);
-        // Progress bar
         display.drawRect(4, 50, DW - 8, 8, GxEPD_BLACK);
     DISPLAY_DRAW_END()
 }

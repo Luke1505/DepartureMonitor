@@ -248,13 +248,6 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
         delay(3000);
     }
 
-    // ── Immediate feedback on button press ────────────────────────────────────
-    // Show a fast BW partial refresh so the user knows the button registered,
-    // before the slow WiFi + API + full e-ink cycle.
-    if (cause == ESP_SLEEP_WAKEUP_EXT0 || cause == ESP_SLEEP_WAKEUP_EXT1) {
-        displayShowLoading("Lädt...");
-    }
-
     // ── WiFi connect ──────────────────────────────────────────────────────────
     bool connected = wifiConnect();
 
