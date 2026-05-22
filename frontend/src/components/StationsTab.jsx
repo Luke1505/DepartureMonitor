@@ -130,8 +130,8 @@ function DeparturePreview({ stopId, api, deviceId }) {
             <TypeIcon size={12} className="text-[#555] dark:text-[#888] flex-shrink-0" />
             <span className="text-xs font-mono font-bold text-[#111] dark:text-[#e4e4e7] w-8 flex-shrink-0">{d.line}</span>
             <span className="flex-1 text-xs text-[#555] dark:text-[#aaa] truncate">{d.destination}</span>
-            <span className={`text-xs font-semibold flex-shrink-0 ${d.countdown === 0 ? 'text-[#cc2200]' : 'text-[#111] dark:text-[#e4e4e7]'}`}>
-              {d.countdown === 0 ? 'Jetzt' : `${d.countdown} Min`}
+            <span className={`text-xs font-semibold flex-shrink-0 ${d.countdown <= 0 ? 'text-[#cc2200]' : 'text-[#111] dark:text-[#e4e4e7]'}`}>
+              {d.countdown <= 0 ? 'Jetzt' : `${d.countdown} Min`}
             </span>
             {d.delay > 0 && (
               <span className="text-[0.6rem] font-bold text-[#cc2200] flex-shrink-0">+{d.delay}</span>
