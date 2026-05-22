@@ -16,7 +16,7 @@ export default function transitRouter(pool, requireDeviceToken) {
       res.json(result);
     } catch (err) {
       console.error(err);
-      res.status(502).json({ error: 'Failed to fetch departures', detail: err.message });
+      res.status(502).json({ error: 'Abfahrten konnten nicht abgerufen werden' });
     }
   });
 
@@ -30,7 +30,7 @@ export default function transitRouter(pool, requireDeviceToken) {
       res.json(stops);
     } catch (err) {
       console.error(err);
-      res.status(502).json({ error: 'Failed to search stops', detail: err.message });
+      res.status(502).json({ error: 'Haltestellensuche fehlgeschlagen' });
     }
   });
 
@@ -44,7 +44,7 @@ export default function transitRouter(pool, requireDeviceToken) {
       res.json(weather);
     } catch (err) {
       console.error(err);
-      res.status(502).json({ error: 'Failed to fetch weather', detail: err.message });
+      res.status(502).json({ error: 'Wetterdaten konnten nicht abgerufen werden' });
     }
   });
 

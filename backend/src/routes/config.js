@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { deviceRateLimiter } from '../middleware/rateLimiter.js';
+import { configRateLimiter, deviceRateLimiter } from '../middleware/rateLimiter.js';
 
 export default function configRouter(pool, requireDeviceToken) {
   const router = Router();
@@ -27,7 +27,7 @@ export default function configRouter(pool, requireDeviceToken) {
   });
 
   // POST /api/device/:id/config  (requires device token)
-  router.post('/:id/config', requireDeviceToken, deviceRateLimiter, async (req, res) => {
+  router.post('/:id/config', requireDeviceToken, configRateLimiter, async (req, res) => {
     const { id } = req.params;
     const config = req.body;
 

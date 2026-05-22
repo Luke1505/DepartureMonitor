@@ -91,6 +91,10 @@ export async function initDb(pool) {
       completed_at TIMESTAMPTZ
     );
     CREATE INDEX IF NOT EXISTS build_jobs_cache_key ON build_jobs(cache_key);
+
+    CREATE INDEX IF NOT EXISTS devices_last_seen ON devices(last_seen DESC NULLS LAST);
+    CREATE INDEX IF NOT EXISTS wifi_networks_device_id ON wifi_networks(device_id);
+    CREATE INDEX IF NOT EXISTS devices_is_setup ON devices(is_setup);
   `);
   console.log('Database schema initialized');
 }

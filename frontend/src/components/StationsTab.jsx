@@ -554,7 +554,8 @@ export default function StationsTab({ config, deviceId, onSave }) {
           />
           <button
             onClick={addStation}
-            className="mt-3 w-full bg-[#cc2200] hover:bg-[#aa1800] text-white text-xs font-bold rounded-lg py-2"
+            disabled={!newStation.stopId}
+            className="mt-3 w-full bg-[#cc2200] hover:bg-[#aa1800] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg py-2"
           >
             Hinzufügen
           </button>

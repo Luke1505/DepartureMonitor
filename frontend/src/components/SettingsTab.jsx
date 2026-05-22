@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
+import { Copy, Check } from 'lucide-react'
 import { getFirmwareLatest, deleteDevice, saveDeviceSettings, regenerateToken, storeDeviceToken, getDeviceToken, clearDeviceToken, removeKnownDevice } from '../lib/api.js'
 import { useNavigate } from 'react-router-dom'
+import { showToast } from '../lib/toast.js'
 
 const inputCls = 'w-full bg-[#f8f8fa] dark:bg-[#222] border border-[#eeeeee] dark:border-[#2e2e2e] text-[#111] dark:text-[#e4e4e7] rounded-lg px-3 py-2 text-xs outline-none focus:border-[#cc2200] transition-colors'
 const labelCls = 'block text-[0.58rem] font-bold tracking-[0.12em] uppercase text-[#ccc] dark:text-[#555] mb-1'
@@ -63,6 +65,7 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
   const [confirmReset, setConfirmReset] = useState(false)
   const [resetting, setResetting] = useState(false)
   const [tokenVisible, setTokenVisible] = useState(false)
+  const [tokenCopied, setTokenCopied] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [tokenFlash, setTokenFlash] = useState(null) // 'ok' | 'error'
   const currentToken = getDeviceToken(deviceId)
@@ -108,8 +111,18 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
       removeKnownDevice(deviceId)
       navigate('/')
     } catch (e) {
-      console.error(e)
+      showToast('Gerät konnte nicht gelöscht werden')
       setResetting(false)
+    }
+  }
+
+  async function copyToken() {
+    try {
+      await navigator.clipboard.writeText(currentToken)
+      setTokenCopied(true)
+      setTimeout(() => setTokenCopied(false), 2000)
+    } catch {
+      showToast('Kopieren fehlgeschlagen', 'info')
     }
   }
 
@@ -322,6 +335,15 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
           >
             {tokenVisible ? 'Verbergen' : 'Anzeigen'}
           </button>
+          {tokenVisible && (
+            <button
+              onClick={copyToken}
+              title="Kopieren"
+              className="text-[#aaa] dark:text-[#888] border border-[#eeeeee] dark:border-[#2e2e2e] p-2 rounded-lg hover:border-[#cc2200] hover:text-[#cc2200] transition-colors"
+            >
+              {tokenCopied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+            </button>
+          )}
         </div>
         <button
           onClick={handleRegenerateToken}

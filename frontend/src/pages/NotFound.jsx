@@ -6,16 +6,16 @@ export default function NotFound() {
       <div className="text-center">
         <p className="text-[#cc2200] text-6xl font-bold mb-4">404</p>
         <h1 className="text-[#111] dark:text-[#e4e4e7] text-xl font-semibold mb-2">
-          Page not found
+          Seite nicht gefunden
         </h1>
         <p className="text-[#aaa] dark:text-[#888] text-sm mb-6">
-          The page you&apos;re looking for doesn&apos;t exist.
+          Diese Seite existiert nicht.
         </p>
         <Link
           to="/"
           className="text-[#cc2200] hover:text-[#aa1800] text-sm font-medium underline"
         >
-          Go home
+          Zur Startseite
         </Link>
       </div>
     </div>

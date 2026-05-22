@@ -39,6 +39,9 @@ export default function deviceRouter(pool, requireDeviceToken) {
     const { id } = req.params;
     const { name, firmware } = req.body;
 
+    if (name !== undefined && (typeof name !== 'string' || name.trim().length > 64))
+      return res.status(400).json({ error: 'Gerätename darf max. 64 Zeichen lang sein' });
+
     try {
       const existing = await pool.query('SELECT access_token FROM devices WHERE id = $1', [id]);
       const token = existing.rows[0]?.access_token || generateToken();
@@ -203,6 +206,10 @@ export default function deviceRouter(pool, requireDeviceToken) {
 
     if (!ssid || !password)
       return res.status(400).json({ error: 'ssid and password required' });
+    if (typeof ssid !== 'string' || ssid.trim().length === 0 || ssid.length > 32)
+      return res.status(400).json({ error: 'SSID muss zwischen 1 und 32 Zeichen lang sein' });
+    if (typeof password !== 'string' || password.length < 1 || password.length > 64)
+      return res.status(400).json({ error: 'Passwort muss zwischen 1 und 64 Zeichen lang sein' });
 
     try {
       const { rows } = await pool.query(

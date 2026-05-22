@@ -21,11 +21,27 @@ const pool = createPool();
 const requireDeviceToken = makeDeviceAuthMiddleware(pool);
 
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors());
-app.use(express.json());
 
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+const allowedOrigins = (process.env.CORS_ORIGINS || 'https://transit.megaluke.de').split(',').map((o) => o.trim());
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (device API calls, curl, etc.)
+    if (!origin) return callback(null, true);
+    if (process.env.NODE_ENV !== 'production' || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error('Not allowed by CORS'));
+  },
+}));
+app.use(express.json({ limit: '500kb' }));
+
+app.get('/health', async (_req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  } catch {
+    res.status(503).json({ status: 'error', timestamp: new Date().toISOString() });
+  }
 });
 
 // Device routes:

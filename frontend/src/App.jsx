@@ -4,6 +4,7 @@ import { Sun, Moon, ChevronRight, Wifi, WifiOff } from 'lucide-react'
 import SetupPage from './pages/SetupPage.jsx'
 import DevicePage from './pages/DevicePage.jsx'
 import NotFound from './pages/NotFound.jsx'
+import Toast from './components/Toast.jsx'
 import { listDevices } from './lib/api.js'
 
 export const DarkModeContext = createContext({ darkMode: false, toggleDarkMode: () => {} })
@@ -137,6 +138,7 @@ export default function App() {
           <Route path="/device/:id" element={<DevicePage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
+        <Toast />
       </BrowserRouter>
     </DarkModeContext.Provider>
   )

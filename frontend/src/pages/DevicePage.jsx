@@ -2,6 +2,7 @@
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { KeyRound, RefreshCw, MonitorSmartphone } from 'lucide-react'
 import { getDevice, getConfig, saveConfig, requestTokenDisplay, getDeviceToken, storeDeviceToken, addKnownDevice } from '../lib/api.js'
+import { showToast } from '../lib/toast.js'
 import DeviceHeader from '../components/DeviceHeader.jsx'
 import StationsTab from '../components/StationsTab.jsx'
 import WiFiTab from '../components/WiFiTab.jsx'
@@ -37,6 +38,7 @@ function formatToken(token) {
 function UnlockScreen({ deviceId, onUnlocked }) {
   const [tokenInput, setTokenInput] = useState('')
   const [requested, setRequested] = useState(false)
+  const [countdown, setCountdown] = useState(null)
   const [requesting, setRequesting] = useState(false)
   const [error, setError] = useState(null)
   const [checking, setChecking] = useState(false)
@@ -47,12 +49,20 @@ function UnlockScreen({ deviceId, onUnlocked }) {
     try {
       await requestTokenDisplay(deviceId)
       setRequested(true)
+      setCountdown(90)
     } catch {
       setError('Gerät nicht erreichbar.')
     } finally {
       setRequesting(false)
     }
   }
+
+  useEffect(() => {
+    if (countdown === null) return
+    if (countdown === 0) { setRequested(false); setCountdown(null); return }
+    const t = setTimeout(() => setCountdown((c) => c - 1), 1000)
+    return () => clearTimeout(t)
+  }, [countdown])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -106,7 +116,7 @@ function UnlockScreen({ deviceId, onUnlocked }) {
               className="w-full flex items-center justify-center gap-2 bg-[#f8f8fa] dark:bg-[#222] border border-[#eeeeee] dark:border-[#2e2e2e] text-[#111] dark:text-[#e4e4e7] text-xs font-semibold px-4 py-2.5 rounded-lg hover:border-[#cc2200] hover:text-[#cc2200] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <MonitorSmartphone size={14} />
-              {requested ? '✓ Code wird angezeigt (60s)' : requesting ? 'Sende...' : 'Code auf Gerät anzeigen'}
+              {requested ? `✓ Code wird angezeigt (${countdown}s)` : requesting ? 'Sende...' : 'Code auf Gerät anzeigen'}
             </button>
             {requested && (
               <p className="text-[0.65rem] text-[#aaa] dark:text-[#888] mt-1.5 text-center">
@@ -203,6 +213,7 @@ export default function DevicePage() {
       setSavedFlash(true)
       setTimeout(() => setSavedFlash(false), 2000)
     } catch (err) {
+      showToast('Speichern fehlgeschlagen')
       console.error('Save failed:', err)
     }
   }

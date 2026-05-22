@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X, Wifi } from 'lucide-react'
 import { getWifi, addWifi, deleteWifi } from '../lib/api.js'
+import { showToast } from '../lib/toast.js'
 
 export default function WiFiTab({ deviceId, device }) {
   const [networks, setNetworks] = useState([])
@@ -13,7 +14,7 @@ export default function WiFiTab({ deviceId, device }) {
   useEffect(() => {
     getWifi(deviceId)
       .then(setNetworks)
-      .catch(console.error)
+      .catch(() => showToast('Netzwerke konnten nicht geladen werden'))
       .finally(() => setLoading(false))
   }, [deviceId])
 
@@ -39,7 +40,7 @@ export default function WiFiTab({ deviceId, device }) {
       await deleteWifi(deviceId, id)
       setNetworks((prev) => prev.filter((n) => n.id !== id))
     } catch (err) {
-      console.error(err)
+      showToast(err.message || 'Netzwerk konnte nicht gelöscht werden')
     }
   }
 

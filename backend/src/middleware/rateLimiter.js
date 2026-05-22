@@ -9,6 +9,15 @@ export const deviceRateLimiter = rateLimit({
   message: { error: 'Too many requests, please slow down.' },
 });
 
+export const configRateLimiter = rateLimit({
+  windowMs: 60000,
+  max: 20,
+  keyGenerator: (req) => `config:${req.params.id || 'unknown'}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Zu viele Anfragen, bitte langsamer.' },
+});
+
 export const registerRateLimiter = rateLimit({
   windowMs: 60000,
   max: 10,

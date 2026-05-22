@@ -62,10 +62,25 @@ function ApiCard({ title, badge, children }) {
 }
 
 export default function ApisTab({ config, onSave }) {
-  const [apis, setApis] = useState(config.apis || {
+  const DEFAULT_APIS = {
+    vrr: { endpoint: 'https://efa.vrr.de/vrr/XML_DM_REQUEST' },
+    mvv: { endpoint: 'https://efa.mvv-muenchen.de/mvv/XML_DM_REQUEST' },
     db: { clientId: '', clientSecret: '' },
     hvv: { apiKey: '', endpoint: 'https://api.geofox.de/gti/public/' },
     custom: [],
+  }
+
+  const [apis, setApis] = useState(() => {
+    const src = config.apis || {}
+    return {
+      ...DEFAULT_APIS,
+      ...src,
+      vrr: { ...DEFAULT_APIS.vrr, ...(src.vrr || {}) },
+      mvv: { ...DEFAULT_APIS.mvv, ...(src.mvv || {}) },
+      db: { ...DEFAULT_APIS.db, ...(src.db || {}) },
+      hvv: { ...DEFAULT_APIS.hvv, ...(src.hvv || {}) },
+      custom: src.custom || [],
+    }
   })
 
   const initialized = useRef(false)
@@ -80,9 +95,6 @@ export default function ApisTab({ config, onSave }) {
     saveTimer.current = setTimeout(() => onSave({ apis }), 1500)
     return () => clearTimeout(saveTimer.current)
   }, [apis])
-
-  const [vrrEndpoint, setVrrEndpoint] = useState('https://efa.vrr.de/vrr/XML_DM_REQUEST')
-  const [mvvEndpoint, setMvvEndpoint] = useState('https://efa.mvv-muenchen.de/mvv/XML_DM_REQUEST')
 
   function updateApi(key, updates) {
     setApis((prev) => ({ ...prev, [key]: { ...prev[key], ...updates } }))
@@ -121,7 +133,7 @@ export default function ApisTab({ config, onSave }) {
           <span className="text-xs text-[#aaa]">Verbunden</span>
         </div>
         <label className={labelCls}>Endpoint</label>
-        <input className={inputCls} value={vrrEndpoint} onChange={(e) => setVrrEndpoint(e.target.value)} />
+        <input className={inputCls} value={apis.vrr?.endpoint || ''} onChange={(e) => updateApi('vrr', { endpoint: e.target.value })} />
       </ApiCard>
 
       {/* MVV */}
@@ -131,7 +143,7 @@ export default function ApisTab({ config, onSave }) {
           <span className="text-xs text-[#aaa]">Verbunden</span>
         </div>
         <label className={labelCls}>Endpoint</label>
-        <input className={inputCls} value={mvvEndpoint} onChange={(e) => setMvvEndpoint(e.target.value)} />
+        <input className={inputCls} value={apis.mvv?.endpoint || ''} onChange={(e) => updateApi('mvv', { endpoint: e.target.value })} />
       </ApiCard>
 
       {/* DB */}
