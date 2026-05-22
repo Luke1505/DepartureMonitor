@@ -4,7 +4,7 @@ import { Sun, Moon, ChevronRight, Wifi, WifiOff } from 'lucide-react'
 import SetupPage from './pages/SetupPage.jsx'
 import DevicePage from './pages/DevicePage.jsx'
 import NotFound from './pages/NotFound.jsx'
-import { listDevices, getDevice, getKnownDeviceIds } from './lib/api.js'
+import { listDevices } from './lib/api.js'
 
 export const DarkModeContext = createContext({ darkMode: false, toggleDarkMode: () => {} })
 
@@ -26,10 +26,7 @@ function HomePage() {
   const [devices, setDevices] = useState(null)
 
   useEffect(() => {
-    const ids = getKnownDeviceIds()
-    if (!ids.length) { setDevices([]); return }
-    Promise.all(ids.map((id) => getDevice(id).catch(() => null)))
-      .then((results) => setDevices(results.filter(Boolean)))
+    listDevices().then(setDevices).catch(() => setDevices([]))
   }, [])
 
   const online = (d) => d.last_seen && (Date.now() - new Date(d.last_seen)) < 5 * 60 * 1000
