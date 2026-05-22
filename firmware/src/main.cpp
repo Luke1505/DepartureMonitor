@@ -377,17 +377,31 @@ void setup() {
     _wakeupCause = esp_sleep_get_wakeup_cause();
     _ext1Bits    = esp_sleep_get_ext1_wakeup_status();
 
+    // Confirm EXT1 pins IMMEDIATELY — before Serial.begin / delay(100).
+    // Ghost floats (GPIO drifting up over ~20s, triggering EXT1) discharge through the
+    // RTC pull-down in <1ms after wakeup, so they read LOW here (~2-5ms post-wakeup).
+    // Real button presses stay HIGH for >50ms (human hold time), so they still read HIGH.
+    // After delay(100) it's too late — even real short taps have been released by then.
+    if (_wakeupCause == ESP_SLEEP_WAKEUP_EXT1 && _ext1Bits != 0) {
+        uint64_t confirmed = 0;
+        const int btns[] = {BTN_A, BTN_B, BTN_C, BTN_D};
+        for (int pin : btns) {
+            if (_ext1Bits & (1ULL << pin)) {
+                pinMode(pin, INPUT_PULLDOWN);
+                if (digitalRead(pin) == HIGH) confirmed |= (1ULL << pin);
+            }
+        }
+        _ext1Bits = confirmed;
+    }
+
     Serial.begin(115200);
     delay(100);
 
     setupPowerLatch();
     initButtons();
 
-    // Ghost EXT1 wakeup: hardware register shows no pins (bits=0x0) despite EXT1 cause.
-    // This happens from capacitance/noise during sleep entry. Real button presses always
-    // have the GPIO bit set in the hardware register (even after the button is released).
-    // We do NOT re-read pins with digitalRead — a quick tap is already released by the
-    // time setup() runs (boot + delay(100) = ~150-200ms).
+    // If EXT1 fired but all pins were already LOW (ghost wakeup with bits=0 or
+    // bits that resolved before our read), go back to sleep for remaining interval.
     if (_wakeupCause == ESP_SLEEP_WAKEUP_EXT1 && _ext1Bits == 0) {
         time_t now = time(nullptr);
         time_t nextFetch = (time_t)_fetchedEpoch + (time_t)_refreshMinutes * 60;
@@ -408,7 +422,7 @@ void setup() {
             esp_deep_sleep_start();
         }
         _wakeupCause = ESP_SLEEP_WAKEUP_TIMER;
-        Serial.println("[BTN] EXT1 ghost wakeup (bits=0x0) → treating as timer");
+        Serial.println("[BTN] EXT1 ghost wakeup (all pins LOW at read) → treating as timer");
     }
 
     ledInit();
