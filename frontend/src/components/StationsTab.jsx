@@ -57,7 +57,7 @@ const EMPTY_STATION = {
 
 function StationIcon({ iconId, size = 14 }) {
   const found = ICONS.find((i) => i.id === iconId)
-  if (!found) return <House size={size} />
+  if (!found) return <Home size={size} />
   const { Icon } = found
   return <Icon size={size} />
 }
@@ -379,7 +379,7 @@ function SortableStation({ station, index, isExpanded, onToggle, onChange, onDel
     opacity: isDragging ? 0.5 : 1,
   }
 
-  const StIcon = ICONS.find((i) => i.id === station.icon)?.Icon || House
+  const StIcon = ICONS.find((i) => i.id === station.icon)?.Icon || Home
 
   return (
     <div

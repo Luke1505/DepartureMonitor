@@ -31,7 +31,14 @@ export async function getDepartures(stopId, api = 'vrr') {
   const base = buildEfaBase(api);
   const url = `${base}XML_DM_REQUEST?outputFormat=JSON&type_dm=stopID&name_dm=${encodeURIComponent(stopId)}&mode=direct&useRealtime=1&limit=8`;
 
-  const response = await fetch(url, { timeout: 10000 });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  let response;
+  try {
+    response = await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
   if (!response.ok) throw new Error(`EFA responded with ${response.status}`);
 
   const json = await response.json();
@@ -66,10 +73,17 @@ export async function searchStops(q, api = 'vrr') {
   const base = buildEfaBase(api);
   const url = `${base}XML_STOPFINDER_REQUEST?outputFormat=JSON&type_sf=any&name_sf=${encodeURIComponent(q)}&anyObjFilter_sf=2`;
 
-  const response = await fetch(url, { timeout: 10000 });
-  if (!response.ok) throw new Error(`EFA stop search responded with ${response.status}`);
+  const controller2 = new AbortController();
+  const timeoutId2 = setTimeout(() => controller2.abort(), 10000);
+  let response2;
+  try {
+    response2 = await fetch(url, { signal: controller2.signal });
+  } finally {
+    clearTimeout(timeoutId2);
+  }
+  if (!response2.ok) throw new Error(`EFA stop search responded with ${response2.status}`);
 
-  const json = await response.json();
+  const json = await response2.json();
   const points = json?.stopFinder?.points || json?.points || [];
   const pointList = Array.isArray(points) ? points : [points];
 

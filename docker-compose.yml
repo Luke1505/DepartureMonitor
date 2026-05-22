@@ -15,6 +15,7 @@ services:
 
   backend:
     image: registry.megaluke.de/transit/backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -31,13 +32,14 @@ services:
     volumes:
       - firmware_data:/data/firmware
     ports:
-      - "3789:3000"
+      - "3789:3789"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3789/health"]
       interval: 10s
 
   build-worker:
     image: registry.megaluke.de/transit/build-worker:${IMAGE_TAG:-latest}
+    restart: unless-stopped
     volumes:
       - ./firmware:/firmware:ro
       - build_cache:/builds

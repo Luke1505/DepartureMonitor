@@ -3,6 +3,7 @@ import { Battery, BatteryLow, Sun, Moon, Zap, ArrowLeft } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useDarkMode } from '../App.jsx'
 import { registerDevice, getFirmwareLatest } from '../lib/api.js'
+import { showToast } from '../lib/toast.js'
 
 function formatLastSeen(lastSeen) {
   if (!lastSeen) return null
@@ -52,6 +53,7 @@ export default function DeviceHeader({ device, deviceId, flash, onDeviceUpdate }
       onDeviceUpdate(updated)
     } catch (e) {
       console.error(e)
+      showToast('Name konnte nicht gespeichert werden', 'error')
     }
     setEditing(false)
   }

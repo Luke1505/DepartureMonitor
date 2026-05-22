@@ -39,7 +39,14 @@ export async function getWeather(lat, lon) {
 
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,is_day&timezone=Europe/Berlin`;
 
-  const response = await fetch(url, { timeout: 10000 });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  let response;
+  try {
+    response = await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
   if (!response.ok) throw new Error(`Open-Meteo responded with ${response.status}`);
 
   const json = await response.json();
