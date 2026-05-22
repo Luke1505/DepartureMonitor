@@ -556,14 +556,29 @@ inline void displayShowLowBattery(uint8_t pct) {
 
 inline void displayShowShutdown() {
     DISPLAY_DRAW_BEGIN(true)
+        // Crescent moon: outer filled circle minus offset circle carved white
+        display.fillCircle(125, 52, 22, GxEPD_BLACK);
+        display.fillCircle(136, 44, 17, GxEPD_WHITE);
+
+        // Title centered, red
         display.setFont(&FreeSansBold9pt7b);
         display.setTextColor(GxEPD_RED);
-        display.setCursor(4, 20);
-        display.print(STRINGS.shutdownTitle);
+        const char* title = STRINGS.shutdownTitle;
+        int16_t tx, ty; uint16_t tw, th;
+        display.getTextBounds(title, 0, 0, &tx, &ty, &tw, &th);
+        display.setCursor((DW - (int)tw) / 2, 95);
+        display.print(title);
 
-        display.setFont(&FreeSansBold9pt7b);
-        display.setCursor(4, 40);
-        display.print(STRINGS.shutdownWake);
+        // Divider
+        display.drawFastHLine(20, 103, DW - 40, GxEPD_BLACK);
+
+        // Wake hint centered, black
+        display.setFont(&FreeSans9pt7b);
+        display.setTextColor(GxEPD_BLACK);
+        const char* hint = STRINGS.shutdownWake;
+        display.getTextBounds(hint, 0, 0, &tx, &ty, &tw, &th);
+        display.setCursor((DW - (int)tw) / 2, 118);
+        display.print(hint);
     DISPLAY_DRAW_END()
 }
 

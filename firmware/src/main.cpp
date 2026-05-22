@@ -219,9 +219,15 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
             return;
         }
     } else {
-        // Timer wakeup
-        _inactiveBoots++;
-        Serial.printf("[BOOT] Timer wakeup, inactive boots: %d\n", _inactiveBoots);
+        if (cause == ESP_SLEEP_WAKEUP_UNDEFINED) {
+            // Physical power-on / hard reset — don't count as inactivity
+            _inactiveBoots = 0;
+            Serial.println("[BOOT] Cold boot (power-on)");
+        } else {
+            // Timer wakeup
+            _inactiveBoots++;
+            Serial.printf("[BOOT] Timer wakeup, inactive boots: %d\n", _inactiveBoots);
+        }
     }
 
     // ── Auto-shutdown after inactivity ───────────────────────────────────────
@@ -240,6 +246,13 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
     if (bat <= cfg.batWarnPct && bat > 0) {
         displayShowLowBattery(bat);
         delay(3000);
+    }
+
+    // ── Immediate feedback on button press ────────────────────────────────────
+    // Show a fast BW partial refresh so the user knows the button registered,
+    // before the slow WiFi + API + full e-ink cycle.
+    if (cause == ESP_SLEEP_WAKEUP_EXT0 || cause == ESP_SLEEP_WAKEUP_EXT1) {
+        displayShowLoading("Lädt...");
     }
 
     // ── WiFi connect ──────────────────────────────────────────────────────────
@@ -334,10 +347,14 @@ void setup() {
     setupPowerLatch();
     initButtons();
     ledInit();
-    // Startup LED test: R → G → B → off  (500ms each)
-    ledSet(true,  false, false); delay(500);
-    ledSet(false, true,  false); delay(500);
-    ledSet(false, false, true);  delay(500);
+    // Startup LED test: R → G → B → off  (1s each, with serial confirmation)
+    Serial.println("[LED] Test R");
+    ledSet(true,  false, false); delay(1000);
+    Serial.println("[LED] Test G");
+    ledSet(false, true,  false); delay(1000);
+    Serial.println("[LED] Test B");
+    ledSet(false, false, true);  delay(1000);
+    Serial.println("[LED] Off");
     ledOff();
     analogSetAttenuation(ADC_11db);  // Full 0-3.3 V range for battery ADC
 
