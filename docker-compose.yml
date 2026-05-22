@@ -20,7 +20,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      PORT: 3000
+      PORT: 3789
       DATABASE_URL: postgresql://transit:${DB_PASSWORD}@postgres:5432/transit
       OTA_DIR: /data/firmware
       RATE_LIMIT_WINDOW_MS: 60000
@@ -33,7 +33,7 @@ services:
     ports:
       - "3789:3000"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:3789/health"]
       interval: 10s
 
   build-worker:
