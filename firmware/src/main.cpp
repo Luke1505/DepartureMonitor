@@ -383,40 +383,32 @@ void setup() {
     setupPowerLatch();
     initButtons();
 
-    // Filter spurious EXT1 bits: noise/capacitance glitches will be gone by now;
-    // a genuinely held button still reads HIGH against INPUT_PULLDOWN.
-    if (_wakeupCause == ESP_SLEEP_WAKEUP_EXT1) {
-        uint64_t confirmed = 0;
-        const int btns[] = {BTN_A, BTN_B, BTN_C, BTN_D};
-        for (int pin : btns) {
-            if ((_ext1Bits & (1ULL << pin)) && digitalRead(pin) == HIGH)
-                confirmed |= (1ULL << pin);
-        }
-        _ext1Bits = confirmed;
-        // All bits were noise — check if we woke up too early.
-        // If so, go straight back to sleep for the remaining interval.
-        if (_ext1Bits == 0) {
-            time_t now = time(nullptr);
-            time_t nextFetch = (time_t)_fetchedEpoch + (time_t)_refreshMinutes * 60;
-            int32_t remainSecs = (int32_t)(nextFetch - now);
-            if (_fetchedEpoch > 0 && now > 1000000L && remainSecs > 10) {
-                // Still early — reconfigure sleep and go back immediately (no Serial spam)
-                const gpio_num_t ext1Pins[] = {(gpio_num_t)BTN_A, (gpio_num_t)BTN_B,
-                                               (gpio_num_t)BTN_C, (gpio_num_t)BTN_D};
-                for (auto pin : ext1Pins) {
-                    rtc_gpio_init(pin);
-                    rtc_gpio_set_direction(pin, RTC_GPIO_MODE_INPUT_ONLY);
-                    rtc_gpio_pulldown_en(pin);
-                    rtc_gpio_pullup_dis(pin);
-                }
-                uint64_t ext1Mask = (1ULL<<BTN_A)|(1ULL<<BTN_B)|(1ULL<<BTN_C)|(1ULL<<BTN_D);
-                esp_sleep_enable_ext1_wakeup(ext1Mask, ESP_EXT1_WAKEUP_ANY_HIGH);
-                esp_sleep_enable_timer_wakeup((uint64_t)remainSecs * 1000000ULL);
-                esp_deep_sleep_start();
+    // Ghost EXT1 wakeup: hardware register shows no pins (bits=0x0) despite EXT1 cause.
+    // This happens from capacitance/noise during sleep entry. Real button presses always
+    // have the GPIO bit set in the hardware register (even after the button is released).
+    // We do NOT re-read pins with digitalRead — a quick tap is already released by the
+    // time setup() runs (boot + delay(100) = ~150-200ms).
+    if (_wakeupCause == ESP_SLEEP_WAKEUP_EXT1 && _ext1Bits == 0) {
+        time_t now = time(nullptr);
+        time_t nextFetch = (time_t)_fetchedEpoch + (time_t)_refreshMinutes * 60;
+        int32_t remainSecs = (int32_t)(nextFetch - now);
+        if (_fetchedEpoch > 0 && now > 1000000L && remainSecs > 10) {
+            // Still early — reconfigure sleep and go back immediately (no Serial spam)
+            const gpio_num_t ext1Pins[] = {(gpio_num_t)BTN_A, (gpio_num_t)BTN_B,
+                                           (gpio_num_t)BTN_C, (gpio_num_t)BTN_D};
+            for (auto pin : ext1Pins) {
+                rtc_gpio_init(pin);
+                rtc_gpio_set_direction(pin, RTC_GPIO_MODE_INPUT_ONLY);
+                rtc_gpio_pulldown_en(pin);
+                rtc_gpio_pullup_dis(pin);
             }
-            _wakeupCause = ESP_SLEEP_WAKEUP_TIMER;
-            Serial.println("[BTN] EXT1 ghost wakeup (no confirmed pins) → treating as timer");
+            uint64_t ext1Mask = (1ULL<<BTN_A)|(1ULL<<BTN_B)|(1ULL<<BTN_C)|(1ULL<<BTN_D);
+            esp_sleep_enable_ext1_wakeup(ext1Mask, ESP_EXT1_WAKEUP_ANY_HIGH);
+            esp_sleep_enable_timer_wakeup((uint64_t)remainSecs * 1000000ULL);
+            esp_deep_sleep_start();
         }
+        _wakeupCause = ESP_SLEEP_WAKEUP_TIMER;
+        Serial.println("[BTN] EXT1 ghost wakeup (bits=0x0) → treating as timer");
     }
 
     ledInit();
