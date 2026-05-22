@@ -207,9 +207,9 @@ export default function DevicePage() {
 
   async function handleSave(newConfig) {
     const merged = { ...config, ...newConfig }
-    setConfig(merged)
     try {
       await saveConfig(id, merged)
+      setConfig(merged)
       setSavedFlash(true)
       setTimeout(() => setSavedFlash(false), 2000)
     } catch (err) {

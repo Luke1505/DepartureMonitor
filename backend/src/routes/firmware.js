@@ -42,7 +42,14 @@ export default function firmwareRouter(pool) {
     }
     try {
       const workerUrl = `${process.env.BUILD_WORKER_URL || 'http://build-worker:3001'}/builds/${filename}`;
-      const upstream = await fetch(workerUrl);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      let upstream;
+      try {
+        upstream = await fetch(workerUrl, { signal: controller.signal });
+      } finally {
+        clearTimeout(timeoutId);
+      }
       if (!upstream.ok) return res.status(404).json({ error: 'Binary not available' });
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.setHeader('Content-Type', 'application/octet-stream');

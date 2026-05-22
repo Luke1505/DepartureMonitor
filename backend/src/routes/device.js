@@ -71,6 +71,10 @@ export default function deviceRouter(pool, requireDeviceToken) {
     const { id } = req.params;
     const { battery_pct, firmware, ssid } = req.body;
 
+    if (battery_pct != null && (typeof battery_pct !== 'number' || battery_pct < 0 || battery_pct > 100)) {
+      return res.status(400).json({ error: 'battery_pct must be 0–100' });
+    }
+
     try {
       await pool.query(
         `INSERT INTO devices (id, battery_pct, firmware, ssid, last_seen)
@@ -189,7 +193,7 @@ export default function deviceRouter(pool, requireDeviceToken) {
     const { id } = req.params;
     try {
       const { rows } = await pool.query(
-        'SELECT id, ssid, password, created_at FROM wifi_networks WHERE device_id = $1 ORDER BY created_at',
+        'SELECT id, ssid, created_at FROM wifi_networks WHERE device_id = $1 ORDER BY created_at',
         [id]
       );
       res.json(rows);

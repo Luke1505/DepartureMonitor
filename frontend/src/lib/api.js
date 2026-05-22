@@ -17,15 +17,22 @@ export const removeKnownDevice = (id) => {
 }
 
 function request(path, options = {}) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
   return fetch(`${BASE_URL}${path}`, {
     ...options,
+    signal: controller.signal,
     headers: { 'Content-Type': 'application/json', ...options.headers },
   }).then(async (res) => {
+    clearTimeout(timeoutId);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }))
       throw Object.assign(new Error(err.error || 'Request failed'), { status: res.status, data: err })
     }
     return res.json()
+  }).catch((err) => {
+    clearTimeout(timeoutId);
+    throw err;
   })
 }
 

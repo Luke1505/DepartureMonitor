@@ -39,7 +39,7 @@ export default function configRouter(pool, requireDeviceToken) {
       );
       const { rows } = await pool.query(
         'INSERT INTO configs (device_id, config) VALUES ($1, $2) RETURNING *',
-        [id, JSON.stringify(config)]
+        [id, config]
       );
       res.json(rows[0]);
     } catch (err) {

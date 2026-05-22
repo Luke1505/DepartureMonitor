@@ -147,15 +147,18 @@ function StationEditForm({ station, onChange, onDelete, deviceId }) {
   const [stopQuery, setStopQuery] = useState('')
   const [stopResults, setStopResults] = useState([])
   const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState(null)
 
   async function doSearch() {
     if (!stopQuery.trim()) return
     setSearching(true)
+    setSearchError(null)
     try {
       const results = await searchStops(stopQuery, station.api)
       setStopResults(results)
     } catch (e) {
       console.error(e)
+      setSearchError('Suche fehlgeschlagen')
     } finally {
       setSearching(false)
     }
@@ -165,6 +168,7 @@ function StationEditForm({ station, onChange, onDelete, deviceId }) {
     onChange({ stopId: stop.id, stopName: stop.name })
     setStopResults([])
     setStopQuery('')
+    setSearchError(null)
   }
 
   function toggleType(t) {
@@ -277,6 +281,9 @@ function StationEditForm({ station, onChange, onDelete, deviceId }) {
               </button>
             ))}
           </div>
+        )}
+        {searchError && (
+          <p className="mt-1 text-[0.7rem] text-[#cc2200]">{searchError}</p>
         )}
 
         {/* Live departure preview */}

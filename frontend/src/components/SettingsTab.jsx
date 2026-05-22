@@ -54,7 +54,12 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
       return
     }
     clearTimeout(deviceSettingsTimer.current)
-    deviceSettingsTimer.current = setTimeout(() => saveDeviceSettings(deviceId, deviceSettings), 1500)
+    deviceSettingsTimer.current = setTimeout(() => {
+      saveDeviceSettings(deviceId, deviceSettings).catch((err) => {
+        console.error('Device settings auto-save failed:', err)
+        showToast('Einstellungen konnten nicht gespeichert werden')
+      })
+    }, 1500)
     return () => clearTimeout(deviceSettingsTimer.current)
   }, [deviceSettings])
 
@@ -122,7 +127,7 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
       setTokenCopied(true)
       setTimeout(() => setTokenCopied(false), 2000)
     } catch {
-      showToast('Kopieren fehlgeschlagen', 'info')
+      showToast('Kopieren fehlgeschlagen', 'error')
     }
   }
 
@@ -139,13 +144,6 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
     } finally {
       setRegenerating(false)
     }
-  }
-
-  async function save() {
-    await Promise.all([
-      onSave(settings),
-      saveDeviceSettings(deviceId, deviceSettings),
-    ])
   }
 
   const selectCls = inputCls + ' cursor-pointer'
