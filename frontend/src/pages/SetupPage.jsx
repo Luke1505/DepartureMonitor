@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
-import { registerDevice } from '../lib/api.js'
+import { registerDevice, storeDeviceToken, addKnownDevice } from '../lib/api.js'
 
 export default function SetupPage() {
   const { id } = useParams()
@@ -18,7 +18,11 @@ export default function SetupPage() {
     setLoading(true)
     setError(null)
     try {
-      await registerDevice(id, { name: name.trim() })
+      const data = await registerDevice(id, { name: name.trim() })
+      if (data.access_token) {
+        storeDeviceToken(id, data.access_token)
+        addKnownDevice(id)
+      }
       navigate(`/device/${id}`)
     } catch (err) {
       setError(err.message || 'Registration failed')

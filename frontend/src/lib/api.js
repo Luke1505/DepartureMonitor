@@ -5,6 +5,17 @@ export const getDeviceToken = (id) => localStorage.getItem(`dtok_${id}`) || ''
 export const storeDeviceToken = (id, token) => localStorage.setItem(`dtok_${id}`, token.toUpperCase())
 export const clearDeviceToken = (id) => localStorage.removeItem(`dtok_${id}`)
 
+// --- Known devices (devices this browser has claimed) ---
+const KNOWN_KEY = 'known_devices'
+export const getKnownDeviceIds = () => JSON.parse(localStorage.getItem(KNOWN_KEY) || '[]')
+export const addKnownDevice = (id) => {
+  const list = getKnownDeviceIds()
+  if (!list.includes(id)) localStorage.setItem(KNOWN_KEY, JSON.stringify([...list, id]))
+}
+export const removeKnownDevice = (id) => {
+  localStorage.setItem(KNOWN_KEY, JSON.stringify(getKnownDeviceIds().filter((d) => d !== id)))
+}
+
 function request(path, options = {}) {
   return fetch(`${BASE_URL}${path}`, {
     ...options,

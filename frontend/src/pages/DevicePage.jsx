@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { KeyRound, RefreshCw, MonitorSmartphone } from 'lucide-react'
-import { getDevice, getConfig, saveConfig, requestTokenDisplay, getDeviceToken, storeDeviceToken } from '../lib/api.js'
+import { getDevice, getConfig, saveConfig, requestTokenDisplay, getDeviceToken, storeDeviceToken, addKnownDevice } from '../lib/api.js'
 import DeviceHeader from '../components/DeviceHeader.jsx'
 import StationsTab from '../components/StationsTab.jsx'
 import WiFiTab from '../components/WiFiTab.jsx'
@@ -213,7 +213,7 @@ export default function DevicePage() {
   }
 
   if (locked) {
-    return <UnlockScreen deviceId={id} onUnlocked={(dev) => { setDevice(dev); setLocked(false); load() }} />
+    return <UnlockScreen deviceId={id} onUnlocked={(dev) => { addKnownDevice(id); setDevice(dev); setLocked(false); load() }} />
   }
 
   if (error) {

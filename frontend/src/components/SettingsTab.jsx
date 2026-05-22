@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { getFirmwareLatest, deleteDevice, saveDeviceSettings, regenerateToken, storeDeviceToken, getDeviceToken, clearDeviceToken } from '../lib/api.js'
+import { getFirmwareLatest, deleteDevice, saveDeviceSettings, regenerateToken, storeDeviceToken, getDeviceToken, clearDeviceToken, removeKnownDevice } from '../lib/api.js'
 import { useNavigate } from 'react-router-dom'
 
 const inputCls = 'w-full bg-[#f8f8fa] dark:bg-[#222] border border-[#eeeeee] dark:border-[#2e2e2e] text-[#111] dark:text-[#e4e4e7] rounded-lg px-3 py-2 text-xs outline-none focus:border-[#cc2200] transition-colors'
@@ -95,6 +95,7 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
     try {
       await deleteDevice(deviceId)
       clearDeviceToken(deviceId)
+      removeKnownDevice(deviceId)
       navigate('/')
     } catch (e) {
       console.error(e)
