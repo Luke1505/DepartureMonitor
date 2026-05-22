@@ -31,7 +31,7 @@ services:
     volumes:
       - firmware_data:/data/firmware
     ports:
-      - "3000:3000"
+      - "3789:3000"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 10s
