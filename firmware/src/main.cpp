@@ -334,6 +334,11 @@ void setup() {
     setupPowerLatch();
     initButtons();
     ledInit();
+    // Startup LED test: R → G → B → off  (500ms each)
+    ledSet(true,  false, false); delay(500);
+    ledSet(false, true,  false); delay(500);
+    ledSet(false, false, true);  delay(500);
+    ledOff();
     analogSetAttenuation(ADC_11db);  // Full 0-3.3 V range for battery ADC
 
     _bootCount++;

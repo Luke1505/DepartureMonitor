@@ -24,7 +24,7 @@ jobs:
       - name: Login to Harbor
         uses: docker/login-action@v3
         with:
-          registry: harbor.megaluke.de
+          registry: registry.megaluke.de
           username: ${{ secrets.HARBOR_USER }}
           password: ${{ secrets.HARBOR_PASSWORD }}
 
@@ -34,8 +34,8 @@ jobs:
           context: backend
           push: true
           tags: |
-            harbor.megaluke.de/transit/backend:latest
-            harbor.megaluke.de/transit/backend:${{ github.sha }}
+            registry.megaluke.de/transit/backend:latest
+            registry.megaluke.de/transit/backend:${{ github.sha }}
 
       - name: Build & push build-worker image
         uses: docker/build-push-action@v5
@@ -43,11 +43,17 @@ jobs:
           context: build-worker
           push: true
           tags: |
-            harbor.megaluke.de/transit/build-worker:latest
-            harbor.megaluke.de/transit/build-worker:${{ github.sha }}
+            registry.megaluke.de/transit/build-worker:latest
+            registry.megaluke.de/transit/build-worker:${{ github.sha }}
 
       - name: Trigger Komodo deploy
-        run: curl -s -X POST "${{ secrets.KOMODO_WEBHOOK_URL }}"
+        run: |
+          curl -sS --fail-with-body \
+            -X POST https://docker.megaluke.de/execute/DeployStack \
+            -H "Content-Type: application/json" \
+            -H "X-API-KEY: ${{ secrets.KOMODO_API_KEY }}" \
+            -H "X-API-SECRET: ${{ secrets.KOMODO_API_SECRET }}" \
+            -d '{"stack": "transit"}'
 
   build-firmware:
     runs-on: ubuntu-latest

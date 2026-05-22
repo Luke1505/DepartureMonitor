@@ -14,7 +14,7 @@ services:
       retries: 5
 
   backend:
-    image: harbor.megaluke.de/transit/backend:${IMAGE_TAG:-latest}
+    image: registry.megaluke.de/transit/backend:${IMAGE_TAG:-latest}
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,7 +37,7 @@ services:
       interval: 10s
 
   build-worker:
-    image: harbor.megaluke.de/transit/build-worker:${IMAGE_TAG:-latest}
+    image: registry.megaluke.de/transit/build-worker:${IMAGE_TAG:-latest}
     volumes:
       - ./firmware:/firmware:ro
       - build_cache:/builds
