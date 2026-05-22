@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ExternalLink, Plus, X, Eye, EyeOff } from 'lucide-react'
 
 const inputCls = 'w-full bg-[#f8f8fa] dark:bg-[#222] border border-[#eeeeee] dark:border-[#2e2e2e] text-[#111] dark:text-[#e4e4e7] rounded-lg px-3 py-2 text-xs outline-none focus:border-[#cc2200] transition-colors'
@@ -68,9 +68,18 @@ export default function ApisTab({ config, onSave }) {
     custom: [],
   })
 
+  const initialized = useRef(false)
+  const saveTimer = useRef(null)
+
   useEffect(() => {
-    if (config.apis) setApis(config.apis)
-  }, [config])
+    if (!initialized.current) {
+      initialized.current = true
+      return
+    }
+    clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => onSave({ apis }), 1500)
+    return () => clearTimeout(saveTimer.current)
+  }, [apis])
 
   const [vrrEndpoint, setVrrEndpoint] = useState('https://efa.vrr.de/vrr/XML_DM_REQUEST')
   const [mvvEndpoint, setMvvEndpoint] = useState('https://efa.mvv-muenchen.de/mvv/XML_DM_REQUEST')
@@ -98,10 +107,6 @@ export default function ApisTab({ config, onSave }) {
       ...prev,
       custom: prev.custom.filter((_, idx) => idx !== i),
     }))
-  }
-
-  function save() {
-    onSave({ apis })
   }
 
   const dbActive = !!(apis.db?.clientId && apis.db?.clientSecret)
@@ -248,13 +253,6 @@ export default function ApisTab({ config, onSave }) {
           </div>
         ))}
       </div>
-
-      <button
-        onClick={save}
-        className="w-full bg-[#cc2200] hover:bg-[#aa1800] text-white font-bold rounded-lg py-2.5 text-sm transition-colors"
-      >
-        Speichern
-      </button>
     </div>
   )
 }

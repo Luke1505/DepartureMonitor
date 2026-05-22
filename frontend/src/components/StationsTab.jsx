@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import {
   DndContext,
   closestCenter,
@@ -17,9 +17,10 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import {
   Home, Briefcase, Star, ShoppingCart, Dumbbell, Utensils, GraduationCap, Cross,
-  Settings, X, GripVertical, Search, ChevronDown, ChevronUp,
+  Settings, X, GripVertical, Search, ChevronDown, ChevronUp, RefreshCw,
+  Bus, TramFront, TrainFront,
 } from 'lucide-react'
-import { searchStops } from '../lib/api.js'
+import { searchStops, getDepartures } from '../lib/api.js'
 
 const ICONS = [
   { id: 'house', Icon: Home },
@@ -61,7 +62,88 @@ function StationIcon({ iconId, size = 14 }) {
   return <Icon size={size} />
 }
 
-function StationEditForm({ station, onChange, onDelete }) {
+const TYPE_ICONS = {
+  U: TramFront,
+  S: TrainFront,
+  T: TramFront,
+  R: TrainFront,
+  B: Bus,
+}
+
+function DeparturePreview({ stopId, api, deviceId }) {
+  const [state, setState] = useState('idle') // idle | loading | loaded | error
+  const [departures, setDepartures] = useState([])
+
+  async function load() {
+    setState('loading')
+    try {
+      const result = await getDepartures(stopId, api, deviceId)
+      setDepartures(result.departures || [])
+      setState('loaded')
+    } catch {
+      setState('error')
+    }
+  }
+
+  if (state === 'idle') {
+    return (
+      <button
+        onClick={load}
+        className="flex items-center gap-1.5 text-xs font-medium text-[#cc2200] hover:text-[#aa1800] transition-colors"
+      >
+        <RefreshCw size={11} /> Abfahrten laden
+      </button>
+    )
+  }
+  if (state === 'loading') {
+    return <p className="text-xs text-[#aaa]">Lade…</p>
+  }
+  if (state === 'error') {
+    return (
+      <div className="flex items-center gap-2">
+        <p className="text-xs text-[#cc2200]">Fehler beim Laden</p>
+        <button onClick={load} className="text-xs text-[#aaa] hover:text-[#cc2200]">
+          <RefreshCw size={11} />
+        </button>
+      </div>
+    )
+  }
+  if (departures.length === 0) {
+    return <p className="text-xs text-[#aaa]">Keine Abfahrten gefunden</p>
+  }
+
+  return (
+    <div className="bg-[#f8f8fa] dark:bg-[#222] rounded-lg overflow-hidden border border-[#eeeeee] dark:border-[#2e2e2e]">
+      {departures.slice(0, 5).map((d, i) => {
+        const TypeIcon = TYPE_ICONS[d.type] || Bus
+        return (
+          <div
+            key={i}
+            className="flex items-center gap-2 px-3 py-1.5 border-b border-[#eeeeee] dark:border-[#2e2e2e] last:border-0"
+          >
+            <TypeIcon size={12} className="text-[#555] dark:text-[#888] flex-shrink-0" />
+            <span className="text-xs font-mono font-bold text-[#111] dark:text-[#e4e4e7] w-8 flex-shrink-0">{d.line}</span>
+            <span className="flex-1 text-xs text-[#555] dark:text-[#aaa] truncate">{d.destination}</span>
+            <span className="text-xs font-semibold text-[#111] dark:text-[#e4e4e7] flex-shrink-0">
+              {d.countdown === 0 ? 'Jetzt' : `${d.countdown} Min`}
+            </span>
+            {d.delay > 0 && (
+              <span className="text-[0.6rem] font-bold text-[#cc2200] flex-shrink-0">+{d.delay}</span>
+            )}
+          </div>
+        )
+      })}
+      <div className="flex items-center justify-between px-3 py-1">
+        <span className="text-[0.6rem] text-[#aaa]">{departures.length} Abfahrten</span>
+        <button onClick={load} className="text-[#aaa] hover:text-[#cc2200] transition-colors">
+          <RefreshCw size={10} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function StationEditForm({ station, onChange, onDelete, deviceId }) {
   const [stopQuery, setStopQuery] = useState('')
   const [stopResults, setStopResults] = useState([])
   const [searching, setSearching] = useState(false)
@@ -196,6 +278,13 @@ function StationEditForm({ station, onChange, onDelete }) {
             ))}
           </div>
         )}
+
+        {/* Live departure preview */}
+        {station.stopId && (
+          <div className="mt-2">
+            <DeparturePreview stopId={station.stopId} api={station.api} deviceId={deviceId} />
+          </div>
+        )}
       </div>
 
       {/* Transport type filter */}
@@ -281,7 +370,7 @@ function StationEditForm({ station, onChange, onDelete }) {
   )
 }
 
-function SortableStation({ station, index, isExpanded, onToggle, onChange, onDelete }) {
+function SortableStation({ station, index, isExpanded, onToggle, onChange, onDelete, deviceId }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: station._id })
 
   const style = {
@@ -361,6 +450,7 @@ function SortableStation({ station, index, isExpanded, onToggle, onChange, onDel
           station={station}
           onChange={(updates) => onChange({ ...station, ...updates })}
           onDelete={onDelete}
+          deviceId={deviceId}
         />
       )}
     </div>
@@ -374,6 +464,23 @@ export default function StationsTab({ config, deviceId, onSave }) {
   const [expandedId, setExpandedId] = useState(null)
   const [adding, setAdding] = useState(false)
   const [newStation, setNewStation] = useState({ ...EMPTY_STATION, _id: 'new' })
+
+  const initialized = useRef(false)
+  const saveTimer = useRef(null)
+
+  // Auto-save when stations change (skips initial render)
+  useEffect(() => {
+    if (!initialized.current) {
+      initialized.current = true
+      return
+    }
+    clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => {
+      const clean = stations.map(({ _id, ...rest }) => rest)
+      onSave({ stations: clean })
+    }, 1500)
+    return () => clearTimeout(saveTimer.current)
+  }, [stations])
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -424,6 +531,7 @@ export default function StationsTab({ config, deviceId, onSave }) {
               onToggle={() => setExpandedId((id) => id === station._id ? null : station._id)}
               onChange={(updated) => updateStation(station._id, updated)}
               onDelete={() => deleteStation(station._id)}
+              deviceId={deviceId}
             />
           ))}
         </SortableContext>
@@ -442,6 +550,7 @@ export default function StationsTab({ config, deviceId, onSave }) {
             station={newStation}
             onChange={(updates) => setNewStation((s) => ({ ...s, ...updates }))}
             onDelete={() => setAdding(false)}
+            deviceId={deviceId}
           />
           <button
             onClick={addStation}
@@ -453,18 +562,11 @@ export default function StationsTab({ config, deviceId, onSave }) {
       ) : (
         <button
           onClick={() => setAdding(true)}
-          className="w-full border-2 border-dashed border-[#ddd] dark:border-[#2e2e2e] text-[#aaa] dark:text-[#888] hover:border-[#cc2200] hover:text-[#cc2200] rounded-[14px] py-4 text-xs font-semibold transition-colors mb-4"
+          className="w-full border-2 border-dashed border-[#ddd] dark:border-[#2e2e2e] text-[#aaa] dark:text-[#888] hover:border-[#cc2200] hover:text-[#cc2200] rounded-[14px] py-4 text-xs font-semibold transition-colors"
         >
           + Haltestelle hinzufügen
         </button>
       )}
-
-      <button
-        onClick={save}
-        className="w-full bg-[#cc2200] hover:bg-[#aa1800] text-white font-bold rounded-lg py-2.5 text-sm transition-colors"
-      >
-        Speichern
-      </button>
     </div>
   )
 }

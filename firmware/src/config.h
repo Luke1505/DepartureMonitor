@@ -1,7 +1,10 @@
 #pragma once
 
 // ── Firmware ────────────────────────────────────────────────────────────────
-#define FIRMWARE_VERSION   "1.0.0"
+// Override at build time: -DFIRMWARE_VERSION='"1.2.3"'
+#ifndef FIRMWARE_VERSION
+#  define FIRMWARE_VERSION "dev"
+#endif
 
 // SERVER_BASE_URL can be overridden at build time via -DSERVER_BASE_URL='"http://..."'
 // Use the firmware-local env for local PC testing:

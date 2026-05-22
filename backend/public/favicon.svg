@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="7" fill="#cc2200"/>
+  <!-- Train body -->
+  <rect x="8" y="8" width="16" height="14" rx="3" fill="white"/>
+  <!-- Windows -->
+  <rect x="11" y="11" width="4" height="4" rx="1" fill="#cc2200"/>
+  <rect x="17" y="11" width="4" height="4" rx="1" fill="#cc2200"/>
+  <!-- Door line -->
+  <rect x="15" y="17" width="2" height="5" rx="0" fill="#cc2200"/>
+  <!-- Track / base -->
+  <rect x="6" y="24" width="20" height="2" rx="1" fill="white" opacity="0.6"/>
+</svg>

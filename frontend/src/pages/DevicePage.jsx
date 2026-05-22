@@ -155,7 +155,10 @@ export default function DevicePage() {
   const [searchParams] = useSearchParams()
   const [device, setDevice] = useState(null)
   const [config, setConfig] = useState(DEFAULT_CONFIG)
-  const [activeTab, setActiveTab] = useState('stations')
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = new URLSearchParams(window.location.search).get('tab')
+    return TABS.some(t => t.id === tab) ? tab : 'stations'
+  })
   const [loading, setLoading] = useState(true)
   const [locked, setLocked] = useState(false)
   const [error, setError] = useState(null)
@@ -207,7 +210,10 @@ export default function DevicePage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#f0f2f5] dark:bg-[#111] flex items-center justify-center">
-        <div className="text-[#aaa] dark:text-[#888] text-sm">Loading...</div>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-6 h-6 border-2 border-[#cc2200] border-t-transparent rounded-full animate-spin" />
+          <p className="text-[#aaa] dark:text-[#888] text-xs">Lade Gerät…</p>
+        </div>
       </div>
     )
   }
@@ -220,7 +226,7 @@ export default function DevicePage() {
     return (
       <div className="min-h-screen bg-[#f0f2f5] dark:bg-[#111] flex items-center justify-center p-4">
         <div className="text-center">
-          <p className="text-[#cc2200] text-sm font-medium mb-2">Error</p>
+          <p className="text-[#cc2200] text-sm font-medium mb-2">Fehler</p>
           <p className="text-[#aaa] text-xs">{error}</p>
         </div>
       </div>

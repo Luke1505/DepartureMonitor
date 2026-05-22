@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
-import { Battery, BatteryLow, Sun, Moon, Zap } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Battery, BatteryLow, Sun, Moon, Zap, ArrowLeft } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useDarkMode } from '../App.jsx'
 import { registerDevice, getFirmwareLatest } from '../lib/api.js'
 
@@ -9,9 +9,9 @@ function formatLastSeen(lastSeen) {
   const diff = Math.floor((Date.now() - new Date(lastSeen)) / 1000)
   if (diff < 60) return 'gerade eben'
   const mins = Math.floor(diff / 60)
-  if (mins < 60) return `upd ${mins} min ago`
+  if (mins < 60) return `vor ${mins} Min.`
   const hrs = Math.floor(mins / 60)
-  return `upd ${hrs}h ago`
+  return `vor ${hrs} Std.`
 }
 
 function compareVersions(a, b) {
@@ -68,7 +68,16 @@ export default function DeviceHeader({ device, deviceId, flash, onDeviceUpdate }
     : false
 
   return (
-    <header className="sticky top-0 z-20 bg-white dark:bg-[#1a1a1a] border-b border-[#eeeeee] dark:border-[#2e2e2e] h-14 flex items-center px-4">
+    <header className="sticky top-0 z-20 bg-white dark:bg-[#1a1a1a] border-b border-[#eeeeee] dark:border-[#2e2e2e] h-14 flex items-center px-4 gap-3">
+      {/* Back button */}
+      <Link
+        to="/"
+        className="p-1.5 rounded-lg text-[#aaa] dark:text-[#888] hover:text-[#111] dark:hover:text-[#e4e4e7] hover:bg-[#f0f2f5] dark:hover:bg-[#222] transition-colors flex-shrink-0"
+        aria-label="Zurück"
+      >
+        <ArrowLeft size={16} />
+      </Link>
+
       <div className="flex-1 flex items-center gap-3 min-w-0">
         {/* Brand dot */}
         <span className="w-2 h-2 rounded-full bg-[#cc2200] flex-shrink-0" />
@@ -110,11 +119,11 @@ export default function DeviceHeader({ device, deviceId, flash, onDeviceUpdate }
             </span>
             {firmwareOutdated && (
               <Link
-                to={`/flash/${deviceId}`}
+                to={`/device/${deviceId}?tab=settings`}
                 className="flex items-center gap-0.5 text-[0.6rem] font-bold bg-[#cc220018] text-[#cc2200] hover:bg-[#cc220030] px-1.5 py-0.5 rounded transition-colors"
-                title={`Update to ${latestFirmware.version}`}
+                title={`Update auf ${latestFirmware.version}`}
               >
-                <Zap size={10} /> Flash Update
+                <Zap size={10} /> Update
               </Link>
             )}
           </div>

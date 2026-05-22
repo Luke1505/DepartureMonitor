@@ -48,7 +48,20 @@ function computeSourceHash() {
   return hash.digest('hex').slice(0, 16);
 }
 
-async function runBuild(jobId, cacheKey, displayType, language, serverUrl) {
+function readFirmwareVersion() {
+  const paths = [
+    join(FIRMWARE_DIR, 'VERSION'),
+    join(FIRMWARE_DIR, '..', 'VERSION'),
+  ];
+  for (const p of paths) {
+    if (existsSync(p)) {
+      return readFileSync(p, 'utf8').trim();
+    }
+  }
+  return process.env.FIRMWARE_VERSION || 'dev';
+}
+
+async function runBuild(jobId, cacheKey, displayType, language, serverUrl, version) {
   const job = jobs.get(jobId);
   const workDir = join(WORK_DIR, jobId);
 
@@ -58,7 +71,7 @@ async function runBuild(jobId, cacheKey, displayType, language, serverUrl) {
 
     const displayTypeUpper = displayType.toUpperCase();
     const langUpper = language.toUpperCase();
-    const extraFlags = `-DDISPLAY_${displayTypeUpper} -DLANG_${langUpper} -DSERVER_BASE_URL='"${serverUrl}"'`;
+    const extraFlags = `-DDISPLAY_${displayTypeUpper} -DLANG_${langUpper} -DSERVER_BASE_URL='"${serverUrl}"' -DFIRMWARE_VERSION='"${version}"'`;
 
     const env = {
       ...process.env,
@@ -122,7 +135,8 @@ app.post('/build', async (req, res) => {
   }
 
   const sourceHash = computeSourceHash();
-  const cacheKey = `${sourceHash}-${display_type}-${language}`;
+  const version = readFirmwareVersion();
+  const cacheKey = `${sourceHash}-${version}-${display_type}-${language}`;
   const cacheBin = join(BUILDS_DIR, `${cacheKey}.bin`);
 
   // Already cached on disk
@@ -143,7 +157,7 @@ app.post('/build', async (req, res) => {
   jobs.set(jobId, { status: 'building', cacheKey });
 
   // Fire and forget
-  runBuild(jobId, cacheKey, display_type, language, server_url).catch(() => {});
+  runBuild(jobId, cacheKey, display_type, language, server_url, version).catch(() => {});
 
   res.json({ job_id: jobId, status: 'building', cache_key: cacheKey });
 });

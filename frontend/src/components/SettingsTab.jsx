@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { getFirmwareLatest, deleteDevice, saveDeviceSettings, regenerateToken, storeDeviceToken, getDeviceToken, clearDeviceToken, removeKnownDevice } from '../lib/api.js'
 import { useNavigate } from 'react-router-dom'
@@ -29,22 +29,32 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
     display_type: device?.display_type ?? 'bwr',
   })
 
-  useEffect(() => {
-    setSettings({
-      refresh_minutes: config.refresh_minutes ?? 1,
-      bat_warn_pct: config.bat_warn_pct ?? 20,
-      timezone: config.timezone ?? 'Europe/Berlin',
-      shutdown_minutes: config.shutdown_minutes ?? 30,
-      ota_url: config.ota_url ?? '',
-    })
-  }, [config])
+  const settingsInitialized = useRef(false)
+  const deviceSettingsInitialized = useRef(false)
+  const settingsTimer = useRef(null)
+  const deviceSettingsTimer = useRef(null)
 
+  // Auto-save config settings
   useEffect(() => {
-    setDeviceSettings({
-      language: device?.language ?? 'de',
-      display_type: device?.display_type ?? 'bwr',
-    })
-  }, [device])
+    if (!settingsInitialized.current) {
+      settingsInitialized.current = true
+      return
+    }
+    clearTimeout(settingsTimer.current)
+    settingsTimer.current = setTimeout(() => onSave(settings), 1500)
+    return () => clearTimeout(settingsTimer.current)
+  }, [settings])
+
+  // Auto-save device settings
+  useEffect(() => {
+    if (!deviceSettingsInitialized.current) {
+      deviceSettingsInitialized.current = true
+      return
+    }
+    clearTimeout(deviceSettingsTimer.current)
+    deviceSettingsTimer.current = setTimeout(() => saveDeviceSettings(deviceId, deviceSettings), 1500)
+    return () => clearTimeout(deviceSettingsTimer.current)
+  }, [deviceSettings])
 
   const [firmwareInfo, setFirmwareInfo] = useState(null)
   const [checkingFw, setCheckingFw] = useState(false)
@@ -292,13 +302,6 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
           </div>
         )}
       </div>
-
-      <button
-        onClick={save}
-        className="w-full bg-[#cc2200] hover:bg-[#aa1800] text-white font-bold rounded-lg py-2.5 text-sm transition-colors"
-      >
-        Speichern
-      </button>
 
       {/* Divider */}
       <div className="border-t border-[#eeeeee] dark:border-[#2e2e2e] my-4" />
