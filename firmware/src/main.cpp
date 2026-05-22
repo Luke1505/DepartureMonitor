@@ -377,18 +377,20 @@ void setup() {
     _wakeupCause = esp_sleep_get_wakeup_cause();
     _ext1Bits    = esp_sleep_get_ext1_wakeup_status();
 
-    // BTN_B (GPIO27) has no external pull-down and slowly floats up to EXT1 threshold
-    // through leakage every ~20s (ghost wakeup). Filter it by sampling the pin over a
-    // short window — ghost discharges in <1ms, real press stays HIGH.
-    // A/C/D do NOT float so we trust their EXT1 hardware bits directly.
-    if (_wakeupCause == ESP_SLEEP_WAKEUP_EXT1 && (_ext1Bits & (1ULL << BTN_B))) {
-        pinMode(BTN_B, INPUT_PULLDOWN);
-        bool realPress = false;
-        for (int i = 0; i < 5 && !realPress; i++) {
-            if (digitalRead(BTN_B) == HIGH) realPress = true;
-            else delay(10);
+    // All EXT1 pins can float up through leakage and trigger ghost wakeups.
+    // Boot from deep sleep to here takes ~50-70ms. Ghost floats discharge through
+    // the RTC pull-down in <1ms — so they read LOW at this point. Real presses
+    // (natural tap ~100ms+) are still held HIGH. One read per pin is enough.
+    if (_wakeupCause == ESP_SLEEP_WAKEUP_EXT1 && _ext1Bits != 0) {
+        uint64_t confirmed = 0;
+        const int btns[] = {BTN_A, BTN_B, BTN_C, BTN_D};
+        for (int pin : btns) {
+            if (_ext1Bits & (1ULL << pin)) {
+                pinMode(pin, INPUT_PULLDOWN);
+                if (digitalRead(pin) == HIGH) confirmed |= (1ULL << pin);
+            }
         }
-        if (!realPress) _ext1Bits &= ~(1ULL << BTN_B);
+        _ext1Bits = confirmed;
     }
 
     Serial.begin(115200);
