@@ -18,6 +18,10 @@ RTC_DATA_ATTR static int      _inactiveBoots  = 0;   // boots since last user in
 RTC_DATA_ATTR static char     _lastUpdateStr[6] = "--:--";
 RTC_DATA_ATTR static bool     _otaAvailable   = false;
 
+// Snapshotted at the very top of setup() before anything can clear RTC registers
+static esp_sleep_wakeup_cause_t _wakeupCause = ESP_SLEEP_WAKEUP_UNDEFINED;
+static uint64_t                 _ext1Bits    = 0;
+
 // ── Forward declarations ──────────────────────────────────────────────────────
 static void goToSleep(int refreshMinutes);
 static void handleShutdown();
@@ -187,15 +191,8 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
         _inactiveBoots = 0;
         Serial.printf("[BTN] A pressed → page %d (pre-norm)\n", _pageIdx);
     } else if (cause == ESP_SLEEP_WAKEUP_EXT1) {
-        uint64_t bits = esp_sleep_get_ext1_wakeup_status();
-        // The EXT1 status register sometimes doesn't latch on short presses.
-        // Fall back to direct GPIO reads so we never miss a button.
-        if (bits == 0) {
-            delay(5);
-            if (digitalRead(BTN_B) == HIGH) bits |= (1ULL << BTN_B);
-            if (digitalRead(BTN_C) == HIGH) bits |= (1ULL << BTN_C);
-            if (digitalRead(BTN_D) == HIGH) bits |= (1ULL << BTN_D);
-        }
+        uint64_t bits = _ext1Bits;
+        Serial.printf("[BTN] EXT1 wakeup, bits=0x%llx\n", bits);
         if (bits & (1ULL << BTN_B)) {
             // BTN_B: previous page — defer modulo until after config refresh (same as BTN_A)
             _pageIdx--;
@@ -270,8 +267,11 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
     // ── Time sync (every boot while online) ──────────────────────────────────
     wifiSyncTime(cfg.timezone);
 
-    // ── Refresh config from server (picks up web UI changes immediately) ──────
-    {
+    // ── Refresh config / heartbeat / WiFi sync (timer wakeup only) ──────────
+    // On button press we just want fresh departures fast — skip the overhead.
+    bool isTimerWakeup = (cause == ESP_SLEEP_WAKEUP_TIMER);
+    if (isTimerWakeup) {
+        // Refresh config from server (picks up web UI changes)
         DeviceConfig freshCfg;
         memset(&freshCfg, 0, sizeof(freshCfg));
         if (transitFetchConfig(uuid, freshCfg) && freshCfg.stationCount > 0) {
@@ -280,23 +280,22 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
             transitSaveConfig(cfg);
             Serial.println("[CFG] Config refreshed from server.");
         } else {
-            // 202 / not in DB — re-register so server knows us and token is synced
             Serial.println("[CFG] Server returned pending_setup — re-registering device.");
             transitRegisterDevice(uuid);
         }
-    }
 
-    // ── Heartbeat ─────────────────────────────────────────────────────────────
-    String showToken = transitSendHeartbeat(uuid, bat);
-    if (showToken.length() > 0) {
-        Serial.printf("[AUTH] Server requested token display: %s\n", showToken.c_str());
-        displayShowAccessCode(uuid.c_str(), showToken.c_str());
-        goToSleep(1);  // stay on access code screen for 60s
-        return;
-    }
+        // Heartbeat
+        String showToken = transitSendHeartbeat(uuid, bat);
+        if (showToken.length() > 0) {
+            Serial.printf("[AUTH] Server requested token display: %s\n", showToken.c_str());
+            displayShowAccessCode(uuid.c_str(), showToken.c_str());
+            goToSleep(1);
+            return;
+        }
 
-    // ── Sync WiFi networks from server ────────────────────────────────────────
-    transitSyncWifiNetworks(uuid);
+        // Sync WiFi networks
+        transitSyncWifiNetworks(uuid);
+    }
 
     // ── OTA check (on timer wakeup or BTN_C) ─────────────────────────────────
     if (cause == ESP_SLEEP_WAKEUP_TIMER || (cause == ESP_SLEEP_WAKEUP_EXT1 &&
@@ -341,6 +340,11 @@ SET_LOOP_TASK_STACK_SIZE(24 * 1024);
 // ── Arduino entry points ──────────────────────────────────────────────────────
 
 void setup() {
+    // Snapshot wakeup cause + EXT1 pin mask IMMEDIATELY — before anything
+    // else can clear/overwrite the RTC wakeup registers.
+    _wakeupCause = esp_sleep_get_wakeup_cause();
+    _ext1Bits    = esp_sleep_get_ext1_wakeup_status();
+
     Serial.begin(115200);
     delay(100);
 
@@ -355,8 +359,8 @@ void setup() {
 
     displayInit();
 
-    esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
-    Serial.printf("[BOOT] Wakeup cause: %d\n", (int)cause);
+    esp_sleep_wakeup_cause_t cause = _wakeupCause;
+    Serial.printf("[BOOT] Wakeup cause: %d  EXT1 bits: 0x%llx\n", (int)cause, _ext1Bits);
 
     // Cold boot or unknown = first boot check
     if (cause == ESP_SLEEP_WAKEUP_UNDEFINED) {

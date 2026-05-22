@@ -44,18 +44,34 @@ inline void wifiSaveNetwork(const char* ssid, const char* password) {
 
 // ── Connect to any known network ─────────────────────────────────────────────
 
-inline bool wifiConnect() {
-    WiFiMulti wifiMulti;
+// Save last-connected credentials for fast reconnect (skips channel scan)
+static void _wifiSaveFastConnect(const String& ssid, int ch, const uint8_t* bssid) {
+    Preferences prefs;
+    prefs.begin(PREFS_WIFI, false);
+    prefs.putString("fast_ssid", ssid);
+    prefs.putInt("fast_ch",  ch);
+    prefs.putBytes("fast_bssid", bssid, 6);
+    prefs.end();
+}
 
+inline bool wifiConnect() {
     Preferences prefs;
     prefs.begin(PREFS_WIFI, true);
     int count = prefs.getInt("count", 0);
-    for (int i = 0; i < count; i++) {
-        String ssid = prefs.getString(("ssid_" + String(i)).c_str(), "");
-        String pass = prefs.getString(("pass_" + String(i)).c_str(), "");
-        if (ssid.length() > 0) {
-            wifiMulti.addAP(ssid.c_str(), pass.c_str());
-            Serial.printf("[WIFI] Known network: %s\n", ssid.c_str());
+
+    // ── Fast path: try last-known BSSID+channel first (no scan needed) ──────
+    String fastSsid = prefs.getString("fast_ssid", "");
+    int    fastCh   = prefs.getInt("fast_ch", 0);
+    uint8_t fastBssid[6] = {};
+    bool hasFast = fastSsid.length() > 0 && fastCh > 0
+                   && prefs.getBytes("fast_bssid", fastBssid, 6) == 6;
+
+    // Find the password for the fast SSID
+    String fastPass;
+    for (int i = 0; i < count && hasFast; i++) {
+        if (prefs.getString(("ssid_" + String(i)).c_str(), "") == fastSsid) {
+            fastPass = prefs.getString(("pass_" + String(i)).c_str(), "");
+            break;
         }
     }
     prefs.end();
@@ -66,23 +82,55 @@ inline bool wifiConnect() {
     }
 
     ledWifi();
-    Serial.print("[WIFI] Connecting");
+
+    if (hasFast && fastPass.length() > 0) {
+        Serial.printf("[WIFI] Fast connect: %s ch%d\n", fastSsid.c_str(), fastCh);
+        WiFi.begin(fastSsid.c_str(), fastPass.c_str(), fastCh, fastBssid);
+        uint32_t t = millis();
+        while (WiFi.status() != WL_CONNECTED) {
+            if (millis() - t > 4000) break;
+            delay(100);
+        }
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.printf("[WIFI] Connected: %s  IP: %s\n",
+                WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+            ledOk(); delay(200); ledOff();
+            return true;
+        }
+        Serial.println("[WIFI] Fast connect failed, scanning...");
+        WiFi.disconnect(true);
+        delay(100);
+    }
+
+    // ── Slow path: scan all known networks ──────────────────────────────────
+    WiFiMulti wifiMulti;
+    prefs.begin(PREFS_WIFI, true);
+    for (int i = 0; i < count; i++) {
+        String ssid = prefs.getString(("ssid_" + String(i)).c_str(), "");
+        String pass = prefs.getString(("pass_" + String(i)).c_str(), "");
+        if (ssid.length() > 0) {
+            wifiMulti.addAP(ssid.c_str(), pass.c_str());
+            Serial.printf("[WIFI] Known network: %s\n", ssid.c_str());
+        }
+    }
+    prefs.end();
+
     uint32_t start = millis();
     while (wifiMulti.run() != WL_CONNECTED) {
         if (millis() - start > WIFI_CONNECT_TIMEOUT_MS) {
-            Serial.println("\n[WIFI] Timeout.");
+            Serial.println("[WIFI] Timeout.");
             ledOff();
             return false;
         }
-        Serial.print('.');
         delay(300);
     }
 
-    Serial.printf("\n[WIFI] Connected: %s  IP: %s\n",
+    // Save fast-connect info for next boot
+    _wifiSaveFastConnect(WiFi.SSID(), WiFi.channel(), WiFi.BSSID());
+
+    Serial.printf("[WIFI] Connected: %s  IP: %s\n",
                   WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
-    ledOk();
-    delay(200);
-    ledOff();
+    ledOk(); delay(200); ledOff();
     return true;
 }
 
@@ -140,9 +188,18 @@ static const char* _posixTz(const char* tz) {
 inline bool wifiSyncTime(const char* timezone = "Europe/Berlin") {
     configTzTime(_posixTz(timezone), NTP_SERVER);
 
+    struct tm ti;
+    // If RTC already has valid time (survived deep sleep), skip NTP wait
+    if (getLocalTime(&ti, 0)) {
+        Serial.printf("[NTP] RTC time: %04d-%02d-%02d %02d:%02d:%02d\n",
+            ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday,
+            ti.tm_hour, ti.tm_min, ti.tm_sec);
+        return true;
+    }
+
+    // First sync — wait for NTP
     Serial.print("[NTP] Waiting for time");
     uint32_t start = millis();
-    struct tm ti;
     while (!getLocalTime(&ti)) {
         if (millis() - start > 8000) {
             Serial.println(" timeout");

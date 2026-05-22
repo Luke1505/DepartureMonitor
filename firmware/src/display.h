@@ -315,6 +315,19 @@ static String _trunc(const char* s, int maxChars) {
     return str.substring(0, maxChars);
 }
 
+// Trim a string (already Latin-1) so its rendered pixels fit within [startX, maxRight)
+// using the currently-selected font. Removes trailing chars until it fits.
+static String _fitToWidth(const String& s, int startX, int y, int maxRight) {
+    String result = s;
+    while (result.length() > 0) {
+        int16_t bx, by; uint16_t bw, bh;
+        display.getTextBounds(result.c_str(), startX, y, &bx, &by, &bw, &bh);
+        if (bx + (int)bw <= maxRight) break;
+        result.remove(result.length() - 1);
+    }
+    return result;
+}
+
 // Right-align text ending at x=rightX, baseline y
 static void _printRight(int rightX, int y, const String& text) {
     int16_t x1, y1; uint16_t w, h;
@@ -738,34 +751,13 @@ inline void displayShowDepartures(const StationDepartures& data,
             // Type badge (14×14, vertically centred in row)
             _drawTypeBadge(COL_BADGE, rowY + 3, dep.type);
 
-            // Line number — bold; measure width to place destination right after
-            display.setFont(&FreeSansBold9pt7b);
-            display.setTextColor(GxEPD_BLACK);
-            {
-                int16_t x1, y1; uint16_t lw, lh;
-                String lineStr = String(_trunc(dep.line, 4));
-                display.getTextBounds(lineStr.c_str(), COL_LINE, textY, &x1, &y1, &lw, &lh);
-                display.setCursor(COL_LINE, textY);
-                display.print(lineStr);
-
-                // Destination — regular, 4px gap after line number
-                int destX = COL_LINE + (int)lw + 4;
-                display.setFont(&FreeSans9pt7b);
-                display.setCursor(destX, textY);
-                display.print(_trunc(dep.destination, 16));
-            }
-
-            // Combined time string
+            // ── Build time label first so we know how wide it is ─────────────
             String timeLabel;
             bool timeRed = false;
             if (dep.isCancelled) {
-                timeLabel = "CNCL";
-                timeRed   = true;
-                outHadRed = true;
+                timeLabel = "CNCL"; timeRed = true; outHadRed = true;
             } else if (dep.minsUntil <= 0) {
-                timeLabel = "NOW";
-                timeRed   = true;
-                outHadRed = true;
+                timeLabel = "NOW";  timeRed = true; outHadRed = true;
             } else if (dep.minsUntil >= 60) {
                 char buf[8];
                 snprintf(buf, sizeof(buf), "%dh%d", dep.minsUntil / 60, dep.minsUntil % 60);
@@ -775,9 +767,39 @@ inline void displayShowDepartures(const StationDepartures& data,
             }
             if (dep.delayMins > 0 && !dep.isCancelled) {
                 timeLabel += "+" + String(dep.delayMins);
-                timeRed    = true;
-                outHadRed  = true;
+                timeRed = true; outHadRed = true;
             }
+
+            // Measure time label pixel width → derive destination right boundary
+            display.setFont(&FreeSans9pt7b);
+            {
+                int16_t tlx, tly; uint16_t tlw, tlh;
+                display.getTextBounds(timeLabel.c_str(), 0, textY, &tlx, &tly, &tlw, &tlh);
+                // _printRight places cursor at COL_RIGHT - tlw - tlx; leftmost pixel = COL_RIGHT - tlw
+                int timePixelLeft = COL_RIGHT - (int)tlw;
+                int destMaxRight  = timePixelLeft - 5; // 5px gap before time
+
+                // Line number — bold; place destination right after it, clipped to destMaxRight
+                display.setFont(&FreeSansBold9pt7b);
+                display.setTextColor(GxEPD_BLACK);
+                String lineStr = _trunc(dep.line, 4);
+                int16_t lx, ly; uint16_t lw, lh;
+                display.getTextBounds(lineStr.c_str(), COL_LINE, textY, &lx, &ly, &lw, &lh);
+                display.setCursor(COL_LINE, textY);
+                display.print(lineStr);
+
+                // Destination — pixel-clipped so it never overlaps the time label
+                int destX = COL_LINE + (int)lw + 4;
+                display.setFont(&FreeSans9pt7b);
+                if (destX < destMaxRight) {
+                    String dest = _fitToWidth(_toLatin1(dep.destination), destX, textY, destMaxRight);
+                    display.setCursor(destX, textY);
+                    display.print(dest);
+                }
+            }
+
+            // Time label — right-aligned
+            display.setFont(&FreeSans9pt7b);
             display.setTextColor(timeRed ? GxEPD_RED : GxEPD_BLACK);
             _printRight(COL_RIGHT, textY, timeLabel);
             display.setTextColor(GxEPD_BLACK);
