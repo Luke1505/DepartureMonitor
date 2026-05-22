@@ -1,8 +1,9 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
-import { Sun, Moon, ChevronRight, Wifi, WifiOff } from 'lucide-react'
+import { Sun, Moon, ChevronRight, Wifi, WifiOff, Zap } from 'lucide-react'
 import SetupPage from './pages/SetupPage.jsx'
 import DevicePage from './pages/DevicePage.jsx'
+import FlashPage from './pages/FlashPage.jsx'
 import NotFound from './pages/NotFound.jsx'
 import Toast from './components/Toast.jsx'
 import { listDevices } from './lib/api.js'
@@ -94,6 +95,13 @@ function HomePage() {
               </Link>
             ))
           )}
+
+          <Link
+            to="/flash"
+            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-[10px] border border-dashed border-[#ddd] dark:border-[#2e2e2e] text-xs text-[#aaa] dark:text-[#555] hover:border-[#cc2200] hover:text-[#cc2200] dark:hover:border-[#cc2200] dark:hover:text-[#cc2200] transition-colors"
+          >
+            <Zap size={12} /> Neues Gerät flashen
+          </Link>
         </div>
       </div>
     </div>
@@ -136,6 +144,8 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/setup/:id" element={<SetupPage />} />
           <Route path="/device/:id" element={<DevicePage />} />
+          <Route path="/flash" element={<FlashPage />} />
+          <Route path="/flash/:deviceId" element={<FlashPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
         <Toast />

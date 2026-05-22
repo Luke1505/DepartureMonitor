@@ -121,7 +121,7 @@ export default function DeviceHeader({ device, deviceId, flash, onDeviceUpdate }
             </span>
             {firmwareOutdated && (
               <Link
-                to={`/device/${deviceId}?tab=settings`}
+                to={`/flash/${deviceId}`}
                 className="flex items-center gap-0.5 text-[0.6rem] font-bold bg-[#cc220018] text-[#cc2200] hover:bg-[#cc220030] px-1.5 py-0.5 rounded transition-colors"
                 title={`Update auf ${latestFirmware.version}`}
               >
