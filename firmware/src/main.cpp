@@ -17,6 +17,8 @@ RTC_DATA_ATTR static int      _pageIdx        = 0;   // current station page
 RTC_DATA_ATTR static int      _inactiveBoots  = 0;   // boots since last user interaction
 RTC_DATA_ATTR static char     _lastUpdateStr[6] = "--:--";
 RTC_DATA_ATTR static bool     _otaAvailable   = false;
+RTC_DATA_ATTR static int32_t  _fetchedEpoch   = 0;   // unix time of last data fetch
+RTC_DATA_ATTR static int8_t   _timeTicksLeft  = 0;   // 1-min time-only refreshes remaining
 
 // Snapshotted at the very top of setup() before anything can clear RTC registers
 static esp_sleep_wakeup_cause_t _wakeupCause = ESP_SLEEP_WAKEUP_UNDEFINED;
@@ -162,6 +164,9 @@ static void handleFirstBoot() {
         displayShowDepartures(deps, bat, batteryIsCharging(),
                               t.c_str(), 0, cfg.stationCount,
                               false, _lastHadRed, _lastHadRed);
+
+        _fetchedEpoch  = (int32_t)time(nullptr);
+        _timeTicksLeft = (cfg.refreshMinutes > 1) ? cfg.refreshMinutes - 1 : 0;
     }
 
     goToSleep(cfg.refreshMinutes);
@@ -181,6 +186,31 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
         return;
     }
     strlcpy(cfg.uuid, uuid.c_str(), sizeof(cfg.uuid));
+
+    // ── Time-only intermediate refresh (timer wakeup between data fetches) ────
+    // Skips WiFi entirely — just redraws with updated clock + adjusted countdowns.
+    if (cause == ESP_SLEEP_WAKEUP_TIMER && _timeTicksLeft > 0) {
+        _timeTicksLeft--;
+        int pageForDisplay = _pageIdx % max(cfg.stationCount, 1);
+        // Configure timezone so getLocalTime() returns local time (returns immediately
+        // if the RTC already has valid time from the last NTP sync — no WiFi needed).
+        wifiSyncTime(cfg.timezone);
+        String timeNow = wifiGetTimeString();
+        int elapsedMins = (_fetchedEpoch > 0)
+            ? (int)((time(nullptr) - (time_t)_fetchedEpoch + 30) / 60) : 0;
+        StationDepartures cached = {};
+        if (transitLoadCachedDepartures(cfg.stations[pageForDisplay], cached)) {
+            for (int i = 0; i < cached.count; i++) {
+                cached.rows[i].minsUntil -= elapsedMins;
+            }
+            uint8_t bat = batteryReadPercent();
+            displayShowDepartures(cached, bat, batteryIsCharging(),
+                                  timeNow.c_str(), pageForDisplay, cfg.stationCount,
+                                  _otaAvailable, _lastHadRed, _lastHadRed);
+        }
+        goToSleep(1);
+        return;
+    }
 
     // ── Handle button wakeup ──────────────────────────────────────────────────
     if (cause == ESP_SLEEP_WAKEUP_EXT0) {
@@ -330,6 +360,10 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
     displayShowDepartures(deps, bat, batteryIsCharging(),
                           timeNow.c_str(), pageForDisplay, cfg.stationCount,
                           _otaAvailable, _lastHadRed, _lastHadRed);
+
+    // Schedule 1-min time-only refreshes until the next full data fetch
+    _fetchedEpoch  = (int32_t)time(nullptr);
+    _timeTicksLeft = (cfg.refreshMinutes > 1) ? cfg.refreshMinutes - 1 : 0;
 
     goToSleep(cfg.refreshMinutes);
 }
