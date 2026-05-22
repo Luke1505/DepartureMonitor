@@ -354,16 +354,7 @@ void setup() {
     setupPowerLatch();
     initButtons();
     ledInit();
-    // Startup LED test: R → G → B → off  (1s each, with serial confirmation)
-    Serial.println("[LED] Test R");
-    ledSet(true,  false, false); delay(1000);
-    Serial.println("[LED] Test G");
-    ledSet(false, true,  false); delay(1000);
-    Serial.println("[LED] Test B");
-    ledSet(false, false, true);  delay(1000);
-    Serial.println("[LED] Off");
-    ledOff();
-    analogSetAttenuation(ADC_11db);  // Full 0-3.3 V range for battery ADC
+    analogSetAttenuation(ADC_11db);// Full 0-3.3 V range for battery ADC
 
     _bootCount++;
     Serial.printf("\n=== Transit Keychain v%s  boot #%lu ===\n",
