@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Battery, BatteryLow, Sun, Moon, Zap, ArrowLeft } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useDarkMode } from '../App.jsx'
 import { registerDevice, getFirmwareLatest } from '../lib/api.js'
 import { showToast } from '../lib/toast.js'

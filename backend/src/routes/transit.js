@@ -8,7 +8,7 @@ export default function transitRouter(pool, requireDeviceToken) {
 
   // GET /api/transit/departures?stopId=&api=vrr&deviceId=
   router.get('/departures', deviceRateLimiter, async (req, res) => {
-    const { stopId, api = 'vrr', deviceId } = req.query;
+    const { stopId, api = 'vrr' } = req.query;
     if (!stopId) return res.status(400).json({ error: 'stopId required' });
 
     try {

@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: transit
       POSTGRES_USER: transit
@@ -27,6 +28,8 @@ services:
       RATE_LIMIT_WINDOW_MS: 60000
       RATE_LIMIT_MAX: 60
       ADMIN_SECRET: ${ADMIN_SECRET}
+      SITE_PASSWORD: ${SITE_PASSWORD}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://transit.megaluke.de}
       BUILD_WORKER_URL: http://build-worker:3001
       SERVER_BASE_URL: https://transit.megaluke.de
     volumes:
@@ -34,7 +37,7 @@ services:
     ports:
       - "3789:3789"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3789/health"]
+      test: ["CMD", "wget", "--timeout=5", "-qO-", "http://localhost:3789/health"]
       interval: 10s
 
   build-worker:

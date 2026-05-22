@@ -117,6 +117,11 @@ export default function deviceRouter(pool, requireDeviceToken) {
     const { id } = req.params;
     const displayToken = generateToken();
     try {
+      // Clean up expired tokens from all devices
+      await pool.query(
+        `UPDATE devices SET display_token = NULL, display_token_expires = NULL
+         WHERE display_token_expires IS NOT NULL AND display_token_expires < NOW()`
+      );
       const { rowCount } = await pool.query(
         `UPDATE devices
          SET pending_show_token = TRUE,
