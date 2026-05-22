@@ -6,7 +6,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/master'
     steps:
       - uses: actions/checkout@v4
 
@@ -68,10 +68,16 @@ jobs:
           path: ~/.platformio
           key: pio-${{ hashFiles('platformio.ini') }}
 
-      - name: Build firmware
-        uses: docker://infinimesh/platformio:latest
+      - name: Setup Python for PlatformIO
+        uses: actions/setup-python@v5
         with:
-          args: platformio run
+          python-version: '3.12'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build firmware
+        run: platformio run --project-dir firmware
 
       - name: Upload firmware to transit.megaluke.de
         run: |
