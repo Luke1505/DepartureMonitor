@@ -130,7 +130,7 @@ function DeparturePreview({ stopId, api, deviceId }) {
             <TypeIcon size={12} className="text-[#555] dark:text-[#888] flex-shrink-0" />
             <span className="text-xs font-mono font-bold text-[#111] dark:text-[#e4e4e7] w-8 flex-shrink-0">{d.line}</span>
             <span className="flex-1 text-xs text-[#555] dark:text-[#aaa] truncate">{d.destination}</span>
-            <span className="text-xs font-semibold text-[#111] dark:text-[#e4e4e7] flex-shrink-0">
+            <span className={`text-xs font-semibold flex-shrink-0 ${d.countdown === 0 ? 'text-[#cc2200]' : 'text-[#111] dark:text-[#e4e4e7]'}`}>
               {d.countdown === 0 ? 'Jetzt' : `${d.countdown} Min`}
             </span>
             {d.delay > 0 && (
@@ -223,7 +223,7 @@ function StationEditForm({ station, onChange, onDelete, deviceId }) {
             <button
               key={id}
               onClick={() => onChange({ icon: id })}
-              className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center border-2 transition-colors active:scale-90 transition-transform ${
+              className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center border-2 transition-all active:scale-[0.9] ${
                 station.icon === id
                   ? 'border-[#cc2200] text-[#cc2200] bg-[#cc220010]'
                   : 'border-transparent text-[#cc2200] hover:border-[#cc2200] bg-[#f8f8fa] dark:bg-[#222]'
@@ -310,7 +310,7 @@ function StationEditForm({ station, onChange, onDelete, deviceId }) {
               <button
                 key={t}
                 onClick={() => toggleType(t)}
-                className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors active:scale-90 transition-transform ${
+                className={`px-3 py-1 rounded-full text-xs font-bold border transition-all active:scale-[0.9] ${
                   on
                     ? 'bg-[#111] dark:bg-white text-white dark:text-[#111] border-[#111] dark:border-white'
                     : 'bg-transparent text-[#aaa] dark:text-[#888] border-[#ddd] dark:border-[#2e2e2e]'
@@ -440,7 +440,7 @@ function SortableStation({ station, index, isExpanded, onToggle, onChange, onDel
         {/* Edit button */}
         <button
           onClick={onToggle}
-          className={`p-1.5 rounded-lg transition-colors active:scale-95 transition-transform ${
+          className={`p-1.5 rounded-lg transition-all active:scale-95 ${
             isExpanded
               ? 'bg-[#cc220015] text-[#cc2200]'
               : 'text-[#aaa] dark:text-[#888] hover:text-[#cc2200]'
@@ -452,30 +452,28 @@ function SortableStation({ station, index, isExpanded, onToggle, onChange, onDel
         {/* Delete */}
         <button
           onClick={onDelete}
-          className="p-1.5 text-[#aaa] dark:text-[#888] hover:text-[#cc2200] transition-colors active:scale-95 transition-transform"
+          className="p-1.5 text-[#aaa] dark:text-[#888] hover:text-[#cc2200] transition-all active:scale-95"
         >
           <X size={14} />
         </button>
       </div>
 
-      {isExpanded && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateRows: isExpanded ? '1fr' : '0fr',
-            transition: 'grid-template-rows 0.28s cubic-bezier(0.22, 1, 0.36, 1)',
-          }}
-        >
-          <div className="overflow-hidden">
-            <StationEditForm
-              station={station}
-              onChange={(updates) => onChange({ ...station, ...updates })}
-              onDelete={onDelete}
-              deviceId={deviceId}
-            />
-          </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateRows: isExpanded ? '1fr' : '0fr',
+          transition: 'grid-template-rows 0.28s cubic-bezier(0.22, 1, 0.36, 1)',
+        }}
+      >
+        <div className="overflow-hidden">
+          <StationEditForm
+            station={station}
+            onChange={(updates) => onChange({ ...station, ...updates })}
+            onDelete={onDelete}
+            deviceId={deviceId}
+          />
         </div>
-      )}
+      </div>
     </div>
   )
 }

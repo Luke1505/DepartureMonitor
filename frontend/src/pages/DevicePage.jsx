@@ -205,6 +205,10 @@ export default function DevicePage() {
 
   useEffect(() => { load() }, [load])
 
+  useEffect(() => {
+    if (device?.name) document.title = `${device.name} — Transit`
+  }, [device?.name])
+
   async function handleSave(newConfig) {
     const merged = { ...config, ...newConfig }
     try {

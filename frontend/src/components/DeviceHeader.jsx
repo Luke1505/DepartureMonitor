@@ -122,7 +122,7 @@ export default function DeviceHeader({ device, deviceId, flash, onDeviceUpdate }
             {firmwareOutdated && (
               <Link
                 to={`/flash/${deviceId}`}
-                className="flex items-center gap-0.5 text-[0.6rem] font-bold bg-[#cc220018] text-[#cc2200] hover:bg-[#cc220030] px-1.5 py-0.5 rounded transition-colors hover:scale-105 active:scale-95 transition-transform"
+                className="flex items-center gap-0.5 text-[0.6rem] font-bold bg-[#cc220018] text-[#cc2200] hover:bg-[#cc220030] px-1.5 py-0.5 rounded hover:scale-105 active:scale-95 transition-all"
                 title={`Update auf ${latestFirmware.version}`}
               >
                 <Zap size={10} /> Update
@@ -142,7 +142,7 @@ export default function DeviceHeader({ device, deviceId, flash, onDeviceUpdate }
         {/* Dark mode toggle */}
         <button
           onClick={toggleDarkMode}
-          className="p-1.5 rounded-lg text-[#aaa] dark:text-[#888] hover:text-[#111] dark:hover:text-[#e4e4e7] hover:bg-[#f0f2f5] dark:hover:bg-[#222] transition-colors hover:scale-110 transition-transform duration-200"
+          className="p-1.5 rounded-lg text-[#aaa] dark:text-[#888] hover:text-[#111] dark:hover:text-[#e4e4e7] hover:bg-[#f0f2f5] dark:hover:bg-[#222] hover:scale-110 transition-all duration-200"
           aria-label="Toggle dark mode"
         >
           {darkMode ? <Sun size={16} /> : <Moon size={16} />}

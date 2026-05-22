@@ -27,6 +27,8 @@ function HomePage() {
   const { darkMode, toggleDarkMode } = useDarkMode()
   const [devices, setDevices] = useState(null)
 
+  useEffect(() => { document.title = 'Transit — DepartureMonitor' }, [])
+
   useEffect(() => {
     listDevices().then(setDevices).catch(() => setDevices([]))
   }, [])
@@ -43,7 +45,7 @@ function HomePage() {
         </div>
         <button
           onClick={toggleDarkMode}
-          className="p-1.5 rounded-lg text-[#aaa] dark:text-[#888] hover:text-[#111] dark:hover:text-[#e4e4e7] hover:bg-white dark:hover:bg-[#222] transition-colors hover:scale-110 transition-transform duration-200"
+          className="p-1.5 rounded-lg text-[#aaa] dark:text-[#888] hover:text-[#111] dark:hover:text-[#e4e4e7] hover:bg-white dark:hover:bg-[#222] hover:scale-110 transition-all duration-200"
           aria-label="Toggle dark mode"
         >
           {darkMode ? <Sun size={16} /> : <Moon size={16} />}
@@ -76,7 +78,7 @@ function HomePage() {
               <Link
                 key={d.id}
                 to={`/device/${d.id}`}
-                className="flex items-center gap-3 bg-white dark:bg-[#1a1a1a] border border-[#eeeeee] dark:border-[#2e2e2e] rounded-[14px] p-4 hover:border-[#cc2200] dark:hover:border-[#cc2200] transition-colors group animate-fade-in-up active:scale-[0.98] transition-transform"
+                className="flex items-center gap-3 bg-white dark:bg-[#1a1a1a] border border-[#eeeeee] dark:border-[#2e2e2e] rounded-[14px] p-4 hover:border-[#cc2200] dark:hover:border-[#cc2200] group animate-fade-in-up active:scale-[0.98] transition-all"
                 style={{ animationDelay: `${i * 60}ms` }}
               >
                 <div className="flex-1 min-w-0">
@@ -101,7 +103,7 @@ function HomePage() {
 
           <Link
             to="/flash"
-            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-[10px] border border-dashed border-[#ddd] dark:border-[#2e2e2e] text-xs text-[#aaa] dark:text-[#555] hover:border-[#cc2200] hover:text-[#cc2200] dark:hover:border-[#cc2200] dark:hover:text-[#cc2200] transition-colors active:scale-[0.97] transition-transform"
+            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-[10px] border border-dashed border-[#ddd] dark:border-[#2e2e2e] text-xs text-[#aaa] dark:text-[#555] hover:border-[#cc2200] hover:text-[#cc2200] dark:hover:border-[#cc2200] dark:hover:text-[#cc2200] active:scale-[0.97] transition-all"
           >
             <Zap size={12} /> Neues Gerät flashen
           </Link>

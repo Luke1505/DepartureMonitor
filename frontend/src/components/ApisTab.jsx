@@ -6,7 +6,7 @@ const labelCls = 'block text-[0.58rem] font-bold tracking-[0.12em] uppercase tex
 
 function GreenBadge({ children }) {
   return (
-    <span className="text-[0.6rem] font-bold bg-[#dcfce7] text-[#16a34a] px-2 py-0.5 rounded-full">
+    <span className="text-[0.6rem] font-bold bg-[#dcfce7] dark:bg-[#16a34a22] text-[#16a34a] dark:text-[#4ade80] px-2 py-0.5 rounded-full">
       {children}
     </span>
   )
@@ -14,7 +14,7 @@ function GreenBadge({ children }) {
 
 function AmberBadge({ children }) {
   return (
-    <span className="text-[0.6rem] font-bold bg-[#fef9c3] text-[#ca8a04] px-2 py-0.5 rounded-full">
+    <span className="text-[0.6rem] font-bold bg-[#fef9c3] dark:bg-[#ca8a0422] text-[#ca8a04] dark:text-[#fbbf24] px-2 py-0.5 rounded-full">
       {children}
     </span>
   )
