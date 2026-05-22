@@ -99,3 +99,8 @@ export const getAnalytics = (id) => request(`/api/transit/analytics/${id}`)
 // --- Firmware ---
 export const getFirmwareLatest = (channel = 'stable') => request(`/api/firmware/latest?channel=${channel}`)
 export const getFirmwareVersions = () => request('/api/firmware/versions')
+
+export const triggerFlashBuild = (deviceId = null) =>
+  request('/api/firmware/flash-build', { method: 'POST', body: JSON.stringify({ deviceId }) })
+
+export const getFlashBuildStatus = (jobId) => request(`/api/firmware/flash-status/${jobId}`)

@@ -240,6 +240,103 @@ export default function firmwareRouter(pool) {
     }
   });
 
+  // POST /api/firmware/flash-build  — trigger a build for USB flashing
+  router.post('/flash-build', async (req, res) => {
+    const { deviceId } = req.body || {};
+    let displayType = 'bwr';
+    let language = 'de';
+
+    if (deviceId) {
+      try {
+        const { rows } = await pool.query(
+          'SELECT display_type, language FROM devices WHERE id = $1',
+          [deviceId]
+        );
+        if (rows.length) {
+          displayType = rows[0].display_type || 'bwr';
+          language = rows[0].language || 'de';
+        }
+      } catch (_) { /* use defaults */ }
+    }
+
+    try {
+      const result = await triggerBuild(displayType, language);
+      const version = result.cache_key
+        ? result.cache_key.split('-').slice(1, -2).join('-')
+        : 'dev';
+      res.json({ ...result, version, display_type: displayType, language });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Build worker unavailable' });
+    }
+  });
+
+  // GET /api/firmware/flash-status/:jobId
+  router.get('/flash-status/:jobId', async (req, res) => {
+    const { jobId } = req.params;
+    try {
+      const result = await getBuildStatus(jobId);
+      const version = result.cache_key
+        ? result.cache_key.split('-').slice(1, -2).join('-')
+        : undefined;
+      res.json({ ...result, version });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Build worker unavailable' });
+    }
+  });
+
+  // GET /api/firmware/flash-manifest/:cacheKey  — esp-web-tools manifest
+  router.get('/flash-manifest/:cacheKey', (req, res) => {
+    const { cacheKey } = req.params;
+    if (!/^[a-zA-Z0-9._-]+$/.test(cacheKey) || cacheKey.includes('..')) {
+      return res.status(400).json({ error: 'Invalid cache key' });
+    }
+    const base = `/api/firmware/flash-bin/${encodeURIComponent(cacheKey)}`;
+    const version = cacheKey.split('-').slice(1, -2).join('-') || 'dev';
+    res.json({
+      name: 'DepartureMonitor',
+      version,
+      new_install_prompt_erase: true,
+      builds: [{
+        chipFamily: 'ESP32',
+        parts: [
+          { path: `${base}/bootloader.bin`, offset: 4096 },
+          { path: `${base}/partitions.bin`, offset: 32768 },
+          { path: `${base}/firmware.bin`, offset: 65536 },
+        ],
+      }],
+    });
+  });
+
+  // GET /api/firmware/flash-bin/:cacheKey/:part  — proxy binary from build-worker
+  router.get('/flash-bin/:cacheKey/:part', async (req, res) => {
+    const { cacheKey, part } = req.params;
+    const allowed = ['bootloader.bin', 'partitions.bin', 'firmware.bin'];
+    if (!allowed.includes(part)) return res.status(400).json({ error: 'Invalid part' });
+    if (!/^[a-zA-Z0-9._-]+$/.test(cacheKey) || cacheKey.includes('..')) {
+      return res.status(400).json({ error: 'Invalid cache key' });
+    }
+    try {
+      const workerUrl = `${process.env.BUILD_WORKER_URL || 'http://build-worker:3001'}/builds/${cacheKey}-${part}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      let upstream;
+      try {
+        upstream = await fetch(workerUrl, { signal: controller.signal });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      if (!upstream.ok) return res.status(404).json({ error: 'Binary not available' });
+      res.setHeader('Content-Disposition', `attachment; filename="${part}"`);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      Readable.fromWeb(upstream.body).pipe(res);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // POST /api/firmware/upload  (multipart, admin protected)
   router.post(
     '/upload',

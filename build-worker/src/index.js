@@ -107,10 +107,17 @@ async function runBuild(jobId, cacheKey, displayType, language, serverUrl, versi
       return;
     }
 
-    // Copy built binary to cache
-    const builtBin = join(workDir, '.pio', 'build', 'firmware-custom', 'firmware.bin');
-    const cacheBin = join(BUILDS_DIR, `${cacheKey}.bin`);
-    copyFileSync(builtBin, cacheBin);
+    // Copy all built binaries to cache
+    const builtDir = join(workDir, '.pio', 'build', 'firmware-custom');
+    const parts = ['firmware', 'bootloader', 'partitions'];
+    for (const part of parts) {
+      const src = join(builtDir, `${part}.bin`);
+      if (existsSync(src)) {
+        copyFileSync(src, join(BUILDS_DIR, `${cacheKey}-${part}.bin`));
+      }
+    }
+    // Legacy single .bin (for OTA compat)
+    copyFileSync(join(builtDir, 'firmware.bin'), join(BUILDS_DIR, `${cacheKey}.bin`));
 
     job.status = 'ready';
     job.url = `/builds/${cacheKey}.bin`;
@@ -140,7 +147,7 @@ app.post('/build', async (req, res) => {
   const cacheBin = join(BUILDS_DIR, `${cacheKey}.bin`);
 
   // Already cached on disk
-  if (existsSync(cacheBin)) {
+  if (existsSync(join(BUILDS_DIR, `${cacheKey}-firmware.bin`)) || existsSync(cacheBin)) {
     const jobId = randomUUID();
     jobs.set(jobId, { status: 'ready', cacheKey, url: `/builds/${cacheKey}.bin` });
     return res.json({ job_id: jobId, status: 'ready', cache_key: cacheKey });
