@@ -15,7 +15,7 @@ The firmware runs on an ESP32 using the Arduino framework (PlatformIO). It drive
 | E-ink RST   | 16   | Hardware reset |
 | E-ink BUSY  | 4    | Busy indicator |
 | Battery ADC | 34   | ADC1_CH6, 1:2 voltage divider |
-| BTN_A       | 26   | Active LOW, internal pull-up; EXT0 wakeup |
+| BTN_A       | 26   | Active HIGH, external 10 kΩ pull-down; EXT1 (ANY_HIGH) |
 | BTN_B       | 27   | Active HIGH, external 10 kΩ pull-down; EXT1 (ANY_HIGH) |
 | BTN_C       | 14   | Active HIGH, external 10 kΩ pull-down; EXT1 (ANY_HIGH) |
 | BTN_D       | 15   | Active HIGH, external 10 kΩ pull-down; EXT1 (ANY_HIGH) |

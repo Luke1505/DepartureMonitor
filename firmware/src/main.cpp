@@ -44,37 +44,29 @@ static void setupPowerLatch() {
 }
 
 static void initButtons() {
-    // BTN_A: active LOW (internal pull-up) → EXT0 wake on LOW
-    pinMode(BTN_A, INPUT_PULLUP);
-    // BTN_B/C/D: active HIGH (external 10k pull-down to GND) → EXT1 wake on ANY_HIGH
+    // All buttons: active HIGH (external 10k pull-down to GND) → EXT1 wake on ANY_HIGH
+    pinMode(BTN_A, INPUT);
     pinMode(BTN_B, INPUT);
     pinMode(BTN_C, INPUT);
     pinMode(BTN_D, INPUT);
 }
 
-static bool isButtonA() { return digitalRead(BTN_A) == LOW; }
+static bool isButtonA() { return digitalRead(BTN_A) == HIGH; }
 static bool isButtonB() { return digitalRead(BTN_B) == HIGH; }
 static bool isButtonC() { return digitalRead(BTN_C) == HIGH; }
 
 // Setup deep-sleep wakeup sources
 static void configureSleepWakeup(int refreshMinutes) {
-    // BTN_A (GPIO26) via EXT0: active-LOW with internal pull-up kept during sleep
-    rtc_gpio_init((gpio_num_t)BTN_A);
-    rtc_gpio_set_direction((gpio_num_t)BTN_A, RTC_GPIO_MODE_INPUT_ONLY);
-    rtc_gpio_pullup_en((gpio_num_t)BTN_A);
-    rtc_gpio_pulldown_dis((gpio_num_t)BTN_A);
-    esp_sleep_enable_ext0_wakeup((gpio_num_t)BTN_A, 0);
-
-    // BTN_B/C/D via EXT1: active-HIGH (external pull-down 10k to GND)
-    // Enable RTC pull-downs so pins stay LOW during sleep without external resistors
-    const gpio_num_t ext1Pins[] = {(gpio_num_t)BTN_B, (gpio_num_t)BTN_C, (gpio_num_t)BTN_D};
+    // All buttons via EXT1: active-HIGH (external pull-down 10k to GND)
+    const gpio_num_t ext1Pins[] = {(gpio_num_t)BTN_A, (gpio_num_t)BTN_B,
+                                   (gpio_num_t)BTN_C, (gpio_num_t)BTN_D};
     for (auto pin : ext1Pins) {
         rtc_gpio_init(pin);
         rtc_gpio_set_direction(pin, RTC_GPIO_MODE_INPUT_ONLY);
         rtc_gpio_pulldown_en(pin);
         rtc_gpio_pullup_dis(pin);
     }
-    uint64_t ext1Mask = (1ULL << BTN_B) | (1ULL << BTN_C) | (1ULL << BTN_D);
+    uint64_t ext1Mask = (1ULL << BTN_A) | (1ULL << BTN_B) | (1ULL << BTN_C) | (1ULL << BTN_D);
     esp_sleep_enable_ext1_wakeup(ext1Mask, ESP_EXT1_WAKEUP_ANY_HIGH);
 
     // Timer wakeup for periodic refresh
@@ -214,17 +206,17 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
     }
 
     // ── Handle button wakeup ──────────────────────────────────────────────────
-    if (cause == ESP_SLEEP_WAKEUP_EXT0) {
-        // BTN_A: next page — don't modulo yet; we defer normalization until
-        // after the online config refresh so a freshly-added station is reachable
-        // even if the NVS copy still has the old (lower) station count.
-        _pageIdx++;
-        _inactiveBoots = 0;
-        Serial.printf("[BTN] A pressed → page %d (pre-norm)\n", _pageIdx);
-    } else if (cause == ESP_SLEEP_WAKEUP_EXT1) {
+    if (cause == ESP_SLEEP_WAKEUP_EXT1) {
         uint64_t bits = _ext1Bits;
         Serial.printf("[BTN] EXT1 wakeup, bits=0x%llx\n", bits);
-        if (bits & (1ULL << BTN_B)) {
+        if (bits & (1ULL << BTN_A)) {
+            // BTN_A: next page — don't modulo yet; we defer normalization until
+            // after the online config refresh so a freshly-added station is reachable
+            // even if the NVS copy still has the old (lower) station count.
+            _pageIdx++;
+            _inactiveBoots = 0;
+            Serial.printf("[BTN] A pressed → page %d (pre-norm)\n", _pageIdx);
+        } else if (bits & (1ULL << BTN_B)) {
             // BTN_B: previous page — defer modulo until after config refresh (same as BTN_A)
             _pageIdx--;
             _inactiveBoots = 0;
