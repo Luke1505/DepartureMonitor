@@ -96,7 +96,7 @@
     ["esp32:GND.1", "btnB:2.l", "black", []],
     ["esp32:D14", "btnC:1.l", "yellow", []],
     ["esp32:GND.1", "btnC:2.l", "black", []],
-    ["esp32:D12", "btnD:1.l", "red", []],
+    ["esp32:D15", "btnD:1.l", "red", []],
     ["esp32:GND.1", "btnD:2.l", "black", []],
 
     ["esp32:D23", "epaper:MOSI", "orange", []],

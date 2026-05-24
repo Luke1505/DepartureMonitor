@@ -15,7 +15,7 @@ export const configRateLimiter = rateLimit({
   keyGenerator: (req) => `config:${req.params.id || 'unknown'}`,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Zu viele Anfragen, bitte langsamer.' },
+  message: { error: 'Too many requests, please slow down.' },
 });
 
 export const registerRateLimiter = rateLimit({

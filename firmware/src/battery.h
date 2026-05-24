@@ -37,7 +37,14 @@ inline uint8_t batteryReadPercent() {
     return batteryVoltageToPercent(batteryReadVoltage());
 }
 
-inline bool batteryIsCharging() {
-    // Reading above 4.25 V typically means USB is connected and charging
-    return batteryReadVoltage() > 4.25f;
+inline bool batteryIsCharging(float voltage) {
+    return voltage > 4.25f;
+}
+
+// Read voltage once and derive both percent and charging state.
+// Use this at call sites that need both to avoid a second ADC sample.
+inline void batteryRead(uint8_t& pct, bool& charging) {
+    float v = batteryReadVoltage();
+    pct      = batteryVoltageToPercent(v);
+    charging = v > 4.25f;
 }

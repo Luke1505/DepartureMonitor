@@ -8,7 +8,7 @@ export function generateToken() {
 export function makeDeviceAuthMiddleware(pool) {
   return async function requireDeviceToken(req, res, next) {
     const token = req.headers['x-device-token'];
-    const id = req.params.id;
+    const id = req.params.id || req.query.deviceId;
     if (!token || !id) return res.status(401).json({ error: 'Unauthorized' });
 
     const upperToken = token.toUpperCase();

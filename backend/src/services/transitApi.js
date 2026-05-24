@@ -57,6 +57,13 @@ export async function getDepartures(stopId, api = 'vrr') {
 
   const result = { departures, fetchedAt: new Date().toISOString() };
   departureCache.set(cacheKey, { data: result, timestamp: Date.now() });
+  if (departureCache.size > 500) {
+    const now = Date.now();
+    for (const [k, v] of departureCache) {
+      if (now - v.timestamp >= CACHE_TTL_MS) departureCache.delete(k);
+    }
+    if (departureCache.size > 500) departureCache.delete(departureCache.keys().next().value);
+  }
   return result;
 }
 
@@ -96,5 +103,6 @@ export async function searchStops(q, api = 'vrr') {
     }));
 
   stopCache.set(cacheKey, { data: stops, timestamp: Date.now() });
+  if (stopCache.size > 200) stopCache.delete(stopCache.keys().next().value);
   return stops;
 }

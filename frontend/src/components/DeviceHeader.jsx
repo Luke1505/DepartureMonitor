@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Battery, BatteryLow, Sun, Moon, Zap, ArrowLeft, CheckCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useDarkMode } from '../App.jsx'
-import { registerDevice, getFirmwareLatest } from '../lib/api.js'
+import { saveDeviceSettings, getFirmwareLatest } from '../lib/api.js'
 import { showToast } from '../lib/toast.js'
 
 function formatLastSeen(lastSeen) {
@@ -49,7 +49,7 @@ export default function DeviceHeader({ device, deviceId, flash, onDeviceUpdate }
       return
     }
     try {
-      const updated = await registerDevice(deviceId, { name: nameValue.trim() })
+      const updated = await saveDeviceSettings(deviceId, { name: nameValue.trim() })
       onDeviceUpdate(updated)
     } catch (e) {
       console.error(e)

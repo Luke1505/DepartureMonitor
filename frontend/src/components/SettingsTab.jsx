@@ -35,6 +35,29 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
   const deviceSettingsInitialized = useRef(false)
   const settingsTimer = useRef(null)
   const deviceSettingsTimer = useRef(null)
+  const onSaveRef = useRef(onSave)
+  useEffect(() => { onSaveRef.current = onSave }, [onSave])
+
+  // Re-sync when config prop changes (e.g. after a save round-trip)
+  useEffect(() => {
+    settingsInitialized.current = false
+    setSettings({
+      refresh_minutes: config.refresh_minutes ?? 1,
+      bat_warn_pct: config.bat_warn_pct ?? 20,
+      timezone: config.timezone ?? 'Europe/Berlin',
+      shutdown_minutes: config.shutdown_minutes ?? 30,
+      ota_url: config.ota_url ?? '',
+    })
+  }, [config])
+
+  // Re-sync device settings when device prop changes (e.g. after a PATCH round-trip)
+  useEffect(() => {
+    deviceSettingsInitialized.current = false
+    setDeviceSettings({
+      language: device?.language ?? 'de',
+      display_type: device?.display_type ?? 'bwr',
+    })
+  }, [device])
 
   // Auto-save config settings
   useEffect(() => {
@@ -43,7 +66,7 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
       return
     }
     clearTimeout(settingsTimer.current)
-    settingsTimer.current = setTimeout(() => onSave(settings), 1500)
+    settingsTimer.current = setTimeout(() => onSaveRef.current(settings), 1500)
     return () => clearTimeout(settingsTimer.current)
   }, [settings])
 
@@ -61,7 +84,7 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
       })
     }, 1500)
     return () => clearTimeout(deviceSettingsTimer.current)
-  }, [deviceSettings])
+  }, [deviceSettings, deviceId])
 
   const [firmwareInfo, setFirmwareInfo] = useState(null)
   const [checkingFw, setCheckingFw] = useState(false)
@@ -73,7 +96,7 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
   const [tokenCopied, setTokenCopied] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [tokenFlash, setTokenFlash] = useState(null) // 'ok' | 'error'
-  const currentToken = getDeviceToken(deviceId)
+  const [currentToken, setCurrentToken] = useState(() => getDeviceToken(deviceId))
 
   function formatToken(t) {
     return t ? `${t.slice(0, 4)}-${t.slice(4)}` : '????????'
@@ -137,6 +160,7 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
     try {
       const result = await regenerateToken(deviceId)
       storeDeviceToken(deviceId, result.access_token)
+      setCurrentToken(result.access_token)
       setTokenFlash('ok')
       setTimeout(() => setTokenFlash(null), 3000)
     } catch {

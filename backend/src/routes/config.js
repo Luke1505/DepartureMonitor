@@ -8,7 +8,7 @@ export default function configRouter(pool, requireDeviceToken) {
   router.get('/:id/config', deviceRateLimiter, async (req, res) => {
     const { id } = req.params;
     try {
-      const deviceResult = await pool.query('SELECT * FROM devices WHERE id = $1', [id]);
+      const deviceResult = await pool.query('SELECT is_setup FROM devices WHERE id = $1', [id]);
       if (!deviceResult.rows.length || !deviceResult.rows[0].is_setup) {
         return res.status(202).json({ status: 'pending_setup' });
       }
@@ -31,6 +31,10 @@ export default function configRouter(pool, requireDeviceToken) {
     const { id } = req.params;
     const config = req.body;
 
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+      return res.status(400).json({ error: 'Invalid config' });
+    }
+
     try {
       await pool.query(
         `INSERT INTO devices (id, is_setup, last_seen) VALUES ($1, TRUE, NOW())
@@ -48,8 +52,8 @@ export default function configRouter(pool, requireDeviceToken) {
     }
   });
 
-  // GET /api/device/:id/config/history
-  router.get('/:id/config/history', deviceRateLimiter, async (req, res) => {
+  // GET /api/device/:id/config/history  (requires device token)
+  router.get('/:id/config/history', requireDeviceToken, deviceRateLimiter, async (req, res) => {
     const { id } = req.params;
     try {
       const { rows } = await pool.query(

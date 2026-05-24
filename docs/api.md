@@ -51,6 +51,7 @@ Returns a public summary of all registered devices.
 **Rate limit:** None
 
 **Response 200:**
+
 ```json
 [
   {
@@ -74,6 +75,7 @@ Returns the full record for a single device.
 **Rate limit:** `deviceRateLimiter`
 
 **Response 200:**
+
 ```json
 {
   "id": "abc123",
@@ -100,6 +102,7 @@ Registers a new device or upserts an existing one. Generates an `access_token` i
 **Rate limit:** `registerRateLimiter` (10 req/min per IP)
 
 **Request body:**
+
 ```json
 {
   "name": "My Keychain",
@@ -108,6 +111,7 @@ Registers a new device or upserts an existing one. Generates an `access_token` i
 ```
 
 **Response 200:**
+
 ```json
 {
   "id": "abc123",
@@ -130,6 +134,7 @@ Updates device presence (battery, firmware, ssid, last_seen). If `pending_show_t
 **Rate limit:** `deviceRateLimiter`
 
 **Request body:**
+
 ```json
 {
   "battery_pct": 82,
@@ -139,11 +144,13 @@ Updates device presence (battery, firmware, ssid, last_seen). If `pending_show_t
 ```
 
 **Response 200 (normal):**
+
 ```json
 { "status": "ok" }
 ```
 
 **Response 200 (token pending):**
+
 ```json
 {
   "status": "ok",
@@ -163,6 +170,7 @@ Signals the backend to send the device's access token on its next heartbeat. Use
 **Rate limit:** None
 
 **Response 200:**
+
 ```json
 { "status": "ok" }
 ```
@@ -177,6 +185,7 @@ Generates a new access token and invalidates the old one.
 **Rate limit:** None
 
 **Response 200:**
+
 ```json
 { "access_token": "F1E2D3C4" }
 ```
@@ -193,6 +202,7 @@ Updates device settings.
 **Rate limit:** `deviceRateLimiter`
 
 **Request body** (all fields optional):
+
 ```json
 {
   "language": "de",
@@ -219,6 +229,7 @@ Permanently deletes the device and all associated data.
 **Rate limit:** `deviceRateLimiter`
 
 **Response 200:**
+
 ```json
 { "status": "deleted" }
 ```
@@ -235,6 +246,7 @@ Returns all saved WiFi networks for the device.
 **Rate limit:** None
 
 **Response 200:**
+
 ```json
 [
   { "id": 1, "ssid": "HomeWifi", "device_id": "abc123" }
@@ -253,6 +265,7 @@ Adds or updates a WiFi network (upsert on `device_id + ssid`).
 **Rate limit:** None
 
 **Request body:**
+
 ```json
 {
   "ssid": "HomeWifi",
@@ -274,6 +287,7 @@ Removes a specific WiFi network.
 **Rate limit:** None
 
 **Response 200:**
+
 ```json
 { "status": "deleted" }
 ```
@@ -294,6 +308,7 @@ Returns the latest saved configuration for the device.
 **Rate limit:** `deviceRateLimiter`
 
 **Response 200** (device configured):
+
 ```json
 {
   "stops": [
@@ -307,6 +322,7 @@ Returns the latest saved configuration for the device.
 ```
 
 **Response 202** (device not found or `is_setup = false`):
+
 ```json
 { "status": "pending_setup" }
 ```
@@ -325,6 +341,7 @@ Saves a new configuration snapshot. Also marks the device as `is_setup = true`.
 **Request body:** Arbitrary JSON config object (same shape as the GET response above)
 
 **Response 201:**
+
 ```json
 { "status": "saved" }
 ```
@@ -341,6 +358,7 @@ Returns the last 10 config snapshots (metadata only, no config body).
 **Rate limit:** `deviceRateLimiter`
 
 **Response 200:**
+
 ```json
 [
   { "id": 42, "device_id": "abc123", "created_at": "2024-01-15T10:00:00Z" },
@@ -374,6 +392,7 @@ Fetches live departure times for a stop.
 **Supported `api` values:** `vrr`, `mvv`, `db`, `hvv`
 
 **Response 200:**
+
 ```json
 [
   {
@@ -406,6 +425,7 @@ Searches for stops by name.
 | `api` | No | `vrr` | Transit API to query |
 
 **Response 200:**
+
 ```json
 [
   { "id": "de:05111:17029", "name": "Düsseldorf Hbf", "type": "station" }
@@ -431,6 +451,7 @@ Returns current weather for a coordinate.
 | `lon` | Yes | Longitude (decimal) |
 
 **Response 200:**
+
 ```json
 {
   "temperature": 12.4,
@@ -451,6 +472,7 @@ Returns the last 50 departure fetch events for a device (for diagnostics).
 **Rate limit:** `deviceRateLimiter`
 
 **Response 200:**
+
 ```json
 [
   {
@@ -483,6 +505,7 @@ Triggers an on-demand firmware build for the device's display type and language,
 | `deviceId` | Yes | Device ID (used to look up `display_type` and `language`) |
 
 **Response 200 — build ready:**
+
 ```json
 {
   "available": true,
@@ -492,6 +515,7 @@ Triggers an on-demand firmware build for the device's display type and language,
 ```
 
 **Response 200 — build in progress:**
+
 ```json
 {
   "available": false,
@@ -502,6 +526,7 @@ Triggers an on-demand firmware build for the device's display type and language,
 ```
 
 **Response 200 — no update needed:**
+
 ```json
 { "available": false }
 ```
@@ -535,6 +560,7 @@ Polls build worker for the status of a specific build job.
 **Rate limit:** None
 
 **Response 200:**
+
 ```json
 {
   "job_id": "job_xyz",
@@ -544,6 +570,7 @@ Polls build worker for the status of a specific build job.
 ```
 
 or when complete:
+
 ```json
 {
   "job_id": "job_xyz",
@@ -562,6 +589,7 @@ Returns the latest stable firmware version record.
 **Rate limit:** None
 
 **Response 200:**
+
 ```json
 {
   "version": "1.2.0",
@@ -606,6 +634,7 @@ Returns an ESP Web Tools JSON manifest for flashing via browser.
 **Rate limit:** None
 
 **Response 200:**
+
 ```json
 {
   "name": "DepartureMonitor",
@@ -675,6 +704,7 @@ Uploads a new firmware release. Sets `is_latest = true` for the uploaded version
 | `firmware` | file | `firmware.bin` |
 
 **Response 201:**
+
 ```json
 { "status": "uploaded", "version": "1.2.0" }
 ```

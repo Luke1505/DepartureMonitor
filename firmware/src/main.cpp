@@ -2,6 +2,10 @@
 #include <esp_sleep.h>
 #include <driver/gpio.h>
 #include <driver/rtc_io.h>
+#include <driver/dac.h>
+#include <soc/rtc_io_reg.h>
+#include <soc/rtc_cntl_reg.h>
+#include <rom/ets_sys.h>
 #include "config.h"
 #include "led.h"
 #include "battery.h"
@@ -13,17 +17,60 @@
 // ── RTC memory (survives deep sleep) ─────────────────────────────────────────
 RTC_DATA_ATTR static uint32_t _bootCount      = 0;
 RTC_DATA_ATTR static bool     _lastHadRed     = false;
-RTC_DATA_ATTR static int      _pageIdx        = 0;   // current station page
-RTC_DATA_ATTR static int      _inactiveBoots  = 0;   // boots since last user interaction
+RTC_DATA_ATTR static int      _pageIdx        = 0;
+RTC_DATA_ATTR static int      _inactiveBoots  = 0;
 RTC_DATA_ATTR static char     _lastUpdateStr[6] = "--:--";
 RTC_DATA_ATTR static bool     _otaAvailable   = false;
-RTC_DATA_ATTR static int32_t  _fetchedEpoch   = 0;   // unix time of last data fetch
-RTC_DATA_ATTR static int8_t   _timeTicksLeft  = 0;   // 1-min time-only refreshes remaining
-RTC_DATA_ATTR static int8_t   _refreshMinutes = 5;   // persisted so setup() can compute remaining sleep
+RTC_DATA_ATTR static int32_t  _fetchedEpoch   = 0;
+RTC_DATA_ATTR static int8_t   _timeTicksLeft  = 0;
+RTC_DATA_ATTR static int8_t   _refreshMinutes = 5;
+
+// Set before entering shutdown deep sleep; cleared when a real button press wakes us.
+// Prevents ghost wakeups from cycling through handleShutdown() repeatedly.
+RTC_DATA_ATTR static bool     _inShutdownSleep        = false;
+
+// Set in setup() when BTN_D was held for ≥3s; handled in handleNormalBoot() to trigger
+// a silent token refresh instead of the normal token display.
+static bool _btnDLongHold = false;
+
+// Set when an EXT1 ghost wakeup falls through as a timer wakeup (no valid epoch to re-sleep).
+// Prevents the ghost from counting as an inactive timer boot and advancing auto-shutdown.
+static bool _wasGhostWakeup = false;
+
+// Written by the wake stub (runs from RTC IRAM before ROM boot, ~1ms after wakeup).
+// True = BTN_A was still HIGH after discharge+re-read → real press, not a ghost.
+RTC_DATA_ATTR static bool     _wakeStubBtnAConfirmed  = false;
+// 0=stub didn't run, 1=BTN_A not in EXT1, 2=pin LOW after drain, 3=pin HIGH after drain
+RTC_DATA_ATTR static uint8_t  _wakeStubDebug          = 0;
 
 // Snapshotted at the very top of setup() before anything can clear RTC registers
 static esp_sleep_wakeup_cause_t _wakeupCause = ESP_SLEEP_WAKEUP_UNDEFINED;
 static uint64_t                 _ext1Bits    = 0;
+
+// ── Wake stub ─────────────────────────────────────────────────────────────────
+// Runs in RTC IRAM immediately at wakeup — before ROM loads the Flash app.
+// Only ROM functions and direct register writes are permitted here.
+// GPIO26 (BTN_A) = RTC channel 7 → register bit = 14+7 = 21.
+// EXT1 status register holds RTC channel bits [17:0], so GPIO26 = bit 7.
+static void RTC_IRAM_ATTR wakeStub() {
+    if (REG_READ(RTC_CNTL_EXT_WAKEUP1_STATUS_REG) & BIT(7)) {
+        // Drive LOW for 5ms to discharge the DAC2 output capacitor
+        REG_WRITE(RTC_GPIO_ENABLE_W1TS_REG, BIT(14 + 7));
+        REG_WRITE(RTC_GPIO_OUT_W1TC_REG,    BIT(14 + 7));
+        ets_delay_us(5000);
+        // Release to input with pulldown; wait 20ms for the line to settle
+        REG_WRITE(RTC_GPIO_ENABLE_W1TC_REG, BIT(14 + 7));
+        REG_SET_BIT(RTC_IO_PAD_DAC2_REG, RTC_IO_PDAC2_RDE);
+        REG_CLR_BIT(RTC_IO_PAD_DAC2_REG, RTC_IO_PDAC2_RUE);
+        ets_delay_us(20000);
+        _wakeStubBtnAConfirmed = (REG_READ(RTC_GPIO_IN_REG) >> (14 + 7)) & 1;
+        _wakeStubDebug = _wakeStubBtnAConfirmed ? 3 : 2;
+    } else {
+        _wakeStubBtnAConfirmed = false;
+        _wakeStubDebug = 1;
+    }
+    esp_default_wake_deep_sleep();
+}
 
 // ── Forward declarations ──────────────────────────────────────────────────────
 static void goToSleep(int refreshMinutes);
@@ -34,31 +81,33 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause);
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 static void setupPowerLatch() {
-    // Release any previous hold before reconfiguring
     rtc_gpio_hold_dis(GPIO_NUM_25);
     rtc_gpio_init(GPIO_NUM_25);
     rtc_gpio_set_direction(GPIO_NUM_25, RTC_GPIO_MODE_OUTPUT_ONLY);
     rtc_gpio_set_level(GPIO_NUM_25, 1);
-    // rtc_gpio_hold_en guarantees the HIGH level is retained through deep sleep
-    // (gpio_hold_en does NOT reliably hold during deep sleep on ESP32)
+    // rtc_gpio_hold_en retains the HIGH through deep sleep; gpio_hold_en does not
     rtc_gpio_hold_en(GPIO_NUM_25);
 }
 
 static void initButtons() {
-    // Active HIGH, internal pull-down keeps pins LOW when not pressed
+    // GPIO26 (BTN_A) shares the DAC2 peripheral — disable its output first so it
+    // doesn't fight the pull-down and produce ghost HIGH readings.
+    dac_output_disable(DAC_CHANNEL_2);
     pinMode(BTN_A, INPUT_PULLDOWN);
     pinMode(BTN_B, INPUT_PULLDOWN);
     pinMode(BTN_C, INPUT_PULLDOWN);
     pinMode(BTN_D, INPUT_PULLDOWN);
 }
 
-static bool isButtonA() { return digitalRead(BTN_A) == HIGH; }
-static bool isButtonB() { return digitalRead(BTN_B) == HIGH; }
-static bool isButtonC() { return digitalRead(BTN_C) == HIGH; }
+// Shared pre-sleep routine called by every sleep path.
+// Configures EXT1 wakeup pins, registers the BTN_A wake stub, and holds GPIO2 LOW.
+static void prepareSleep() {
+    ledOff();
+    pinMode(2, OUTPUT);
+    digitalWrite(2, LOW);
+    gpio_hold_en(GPIO_NUM_2);
 
-// Setup deep-sleep wakeup sources
-static void configureSleepWakeup(int refreshMinutes) {
-    // All buttons via EXT1: active-HIGH (internal pull-down, no external resistor)
+    dac_output_disable(DAC_CHANNEL_2);
     const gpio_num_t ext1Pins[] = {(gpio_num_t)BTN_A, (gpio_num_t)BTN_B,
                                    (gpio_num_t)BTN_C, (gpio_num_t)BTN_D};
     for (auto pin : ext1Pins) {
@@ -67,31 +116,26 @@ static void configureSleepWakeup(int refreshMinutes) {
         rtc_gpio_pulldown_en(pin);
         rtc_gpio_pullup_dis(pin);
     }
-    uint64_t ext1Mask = (1ULL << BTN_A) | (1ULL << BTN_B) | (1ULL << BTN_C) | (1ULL << BTN_D);
+    uint64_t ext1Mask = (1ULL<<BTN_A)|(1ULL<<BTN_B)|(1ULL<<BTN_C)|(1ULL<<BTN_D);
     esp_sleep_enable_ext1_wakeup(ext1Mask, ESP_EXT1_WAKEUP_ANY_HIGH);
-
-    // Timer wakeup for periodic refresh
-    uint64_t sleepUs = (uint64_t)refreshMinutes * 60 * 1000000ULL;
-    esp_sleep_enable_timer_wakeup(sleepUs);
-
-    Serial.printf("[PWR] Sleep for %d min, wake on BTN or timer.\n", refreshMinutes);
+    esp_set_deep_sleep_wake_stub(wakeStub);
 }
 
 static void goToSleep(int refreshMinutes) {
-    ledOff();
+    prepareSleep();
+    esp_sleep_enable_timer_wakeup((uint64_t)refreshMinutes * 60 * 1000000ULL);
+    Serial.printf("[PWR] Sleep for %d min, wake on BTN or timer.\n", refreshMinutes);
     Serial.flush();
-    configureSleepWakeup(refreshMinutes);
     esp_deep_sleep_start();
 }
 
 static void handleShutdown() {
-    Serial.println("[PWR] Shutting down.");
+    Serial.println("[PWR] Shutting down — deep sleep until button press.");
     displayShowShutdown();
     delay(2000);
-    rtc_gpio_hold_dis(GPIO_NUM_25);
-    rtc_gpio_set_level(GPIO_NUM_25, 0);
-    delay(500);
-    // Fallback: deep sleep with no wakeup sources
+    _inShutdownSleep = true;
+    prepareSleep();
+    Serial.flush();
     esp_deep_sleep_start();
 }
 
@@ -110,16 +154,13 @@ static void handleFirstBoot() {
     chk.end();
 
     if (knownNets == 0) {
-        // True first boot: show setup screen and open captive portal
         displayShowSetup(uuid.c_str());
         if (!wifiOpenCaptivePortal(uuid.c_str())) {
             Serial.println("[BOOT] Portal timed out. Will retry on next boot.");
             goToSleep(DEFAULT_REFRESH_MIN);
             return;
         }
-        // wifiOpenCaptivePortal already connected; fall through to register + poll
     } else {
-        // WiFi known but no config yet — skip portal, connect directly
         displayShowWaitingForConfig(uuid.c_str());
         if (!wifiConnect()) {
             Serial.println("[BOOT] WiFi connect failed.");
@@ -145,16 +186,16 @@ static void handleFirstBoot() {
     transitSaveConfig(cfg);
     Serial.println("[BOOT] Config saved. Starting normal operation.");
 
-    // Fetch and show first departures
     if (cfg.stationCount > 0) {
         StationDepartures deps = {};
         transitFetchDepartures(uuid, cfg.stations[0], deps);
 
-        uint8_t bat = batteryReadPercent();
+        uint8_t bat; bool charging;
+        batteryRead(bat, charging);
         String t = wifiGetTimeString(15);
         strlcpy(_lastUpdateStr, t.c_str(), sizeof(_lastUpdateStr));
 
-        displayShowDepartures(deps, bat, batteryIsCharging(),
+        displayShowDepartures(deps, bat, charging,
                               t.c_str(), 0, cfg.stationCount,
                               false, _lastHadRed, _lastHadRed);
 
@@ -181,27 +222,27 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
     }
     strlcpy(cfg.uuid, uuid.c_str(), sizeof(cfg.uuid));
 
-    // ── Time-only intermediate refresh (timer wakeup between data fetches) ────
-    // Skips WiFi entirely — just redraws with updated clock + adjusted countdowns.
+    // ── Time-only intermediate refresh ────────────────────────────────────────
+    // On timer wakeups between full data fetches: redraw with updated clock,
+    // no WiFi. Skips config refresh, heartbeat, OTA check, and departure fetch.
     if (cause == ESP_SLEEP_WAKEUP_TIMER && _timeTicksLeft > 0) {
         _timeTicksLeft--;
         int n = max(cfg.stationCount, 1);
         int pageForDisplay = ((_pageIdx % n) + n) % n;
-        // Configure timezone so getLocalTime() returns local time (returns immediately
-        // if the RTC already has valid time from the last NTP sync — no WiFi needed).
         wifiSyncTime(cfg.timezone);
         String timeNow = wifiGetTimeString();
         int elapsedMins = (_fetchedEpoch > 0)
             ? (int)((time(nullptr) - (time_t)_fetchedEpoch + 30) / 60) : 0;
         StationDepartures cached = {};
         if (transitLoadCachedDepartures(cfg.stations[pageForDisplay], cached)) {
-            for (int i = 0; i < cached.count; i++) {
-                cached.rows[i].minsUntil -= elapsedMins;
-            }
-            uint8_t bat = batteryReadPercent();
-            displayShowDepartures(cached, bat, batteryIsCharging(),
+            for (int i = 0; i < cached.count; i++) cached.rows[i].minsUntil -= elapsedMins;
+            uint8_t bat; bool charging;
+            batteryRead(bat, charging);
+            displayShowDepartures(cached, bat, charging,
                                   timeNow.c_str(), pageForDisplay, cfg.stationCount,
                                   _otaAvailable, _lastHadRed, _lastHadRed);
+        } else {
+            _lastHadRed = false;
         }
         goToSleep(1);
         return;
@@ -212,24 +253,36 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
         uint64_t bits = _ext1Bits;
         Serial.printf("[BTN] EXT1 wakeup, bits=0x%llx\n", bits);
         if (bits & (1ULL << BTN_A)) {
-            // BTN_A: next page — don't modulo yet; we defer normalization until
-            // after the online config refresh so a freshly-added station is reachable
-            // even if the NVS copy still has the old (lower) station count.
             _pageIdx++;
             _inactiveBoots = 0;
             Serial.printf("[BTN] A pressed → page %d (pre-norm)\n", _pageIdx);
         } else if (bits & (1ULL << BTN_B)) {
-            // BTN_B: previous page — defer modulo until after config refresh (same as BTN_A)
             _pageIdx--;
             _inactiveBoots = 0;
             Serial.printf("[BTN] B pressed → page %d (pre-norm)\n", _pageIdx);
         } else if (bits & (1ULL << BTN_C)) {
-            // BTN_C: force OTA check (active HIGH)
             _inactiveBoots = 0;
-            Serial.println("[BTN] C pressed → OTA check");
+            Serial.println("[BTN] C pressed → force refresh");
         } else if (bits & (1ULL << BTN_D)) {
-            // BTN_D: show access token (works offline — reads from NVS)
             _inactiveBoots = 0;
+            if (_btnDLongHold) {
+                _btnDLongHold = false;
+                Serial.println("[BTN] D long-hold → silent token refresh");
+                displayShowLoading("Refreshing token...");
+                if (wifiConnect()) {
+                    if (transitRegisterDevice(uuid)) {
+                        displayShowLoading("Token refreshed.");
+                    } else {
+                        displayShowLoading("Refresh failed.");
+                    }
+                } else {
+                    displayShowLoading("No WiFi.");
+                }
+                delay(2000);
+                _timeTicksLeft = 0;
+                goToSleep(1);
+                return;
+            }
             Serial.println("[BTN] D pressed → show access token");
             String token = transitGetAccessToken();
             if (token.length() > 0) {
@@ -237,22 +290,24 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
             } else {
                 displayShowLoading("No token yet.");
             }
+            _timeTicksLeft = 0;
             goToSleep(1);
             return;
         }
     } else {
         if (cause == ESP_SLEEP_WAKEUP_UNDEFINED) {
-            // Physical power-on / hard reset — don't count as inactivity
             _inactiveBoots = 0;
             Serial.println("[BOOT] Cold boot (power-on)");
+        } else if (_wasGhostWakeup) {
+            _wasGhostWakeup = false;
+            Serial.println("[BOOT] Ghost wakeup (no epoch) — not counting as inactive");
         } else {
-            // Timer wakeup
             _inactiveBoots++;
             Serial.printf("[BOOT] Timer wakeup, inactive boots: %d\n", _inactiveBoots);
         }
     }
 
-    // ── Auto-shutdown after inactivity ───────────────────────────────────────
+    // ── Auto-shutdown after inactivity ────────────────────────────────────────
     if (cfg.shutdownMinutes > 0) {
         int inactiveMinutes = _inactiveBoots * cfg.refreshMinutes;
         if (inactiveMinutes >= cfg.shutdownMinutes) {
@@ -263,7 +318,8 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
     }
 
     // ── Battery check ─────────────────────────────────────────────────────────
-    uint8_t bat = batteryReadPercent();
+    uint8_t bat; bool charging;
+    batteryRead(bat, charging);
     Serial.printf("[BAT] %d%%\n", bat);
     if (bat <= cfg.batWarnPct && bat > 0) {
         displayShowLowBattery(bat);
@@ -271,46 +327,45 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
     }
 
     // ── WiFi connect ──────────────────────────────────────────────────────────
-    bool connected = wifiConnect();
-
-    if (!connected) {
+    if (!wifiConnect()) {
         Serial.println("[WIFI] Offline — showing cached data.");
         int n = max(cfg.stationCount, 1);
         int pageForDisplay = ((_pageIdx % n) + n) % n;
-        _pageIdx = pageForDisplay;  // normalize back so next BTN_B/A starts from correct index
+        _pageIdx = pageForDisplay;
         StationDepartures cached = {};
         if (transitLoadCachedDepartures(cfg.stations[pageForDisplay], cached)) {
-            displayShowDepartures(cached, bat, batteryIsCharging(),
+            displayShowDepartures(cached, bat, charging,
                                   _lastUpdateStr, pageForDisplay, cfg.stationCount,
                                   _otaAvailable, _lastHadRed, _lastHadRed);
         } else {
+            _lastHadRed = false;
             displayShowNoSignal(_lastUpdateStr);
         }
         goToSleep(cfg.refreshMinutes);
         return;
     }
 
-    // ── Time sync (every boot while online) ──────────────────────────────────
+    // ── Time sync ─────────────────────────────────────────────────────────────
     wifiSyncTime(cfg.timezone);
 
-    // ── Refresh config / heartbeat / WiFi sync (timer wakeup only) ──────────
-    // On button press we just want fresh departures fast — skip the overhead.
-    bool isTimerWakeup = (cause == ESP_SLEEP_WAKEUP_TIMER);
-    if (isTimerWakeup) {
-        // Refresh config from server (picks up web UI changes)
+    // ── Config refresh / heartbeat / WiFi sync (timer wakeup only) ───────────
+    // Skip on button press — we want fresh departures fast.
+    if (cause == ESP_SLEEP_WAKEUP_TIMER) {
         DeviceConfig freshCfg;
         memset(&freshCfg, 0, sizeof(freshCfg));
-        if (transitFetchConfig(uuid, freshCfg) && freshCfg.stationCount > 0) {
+        bool cfgPending = false;
+        if (transitFetchConfig(uuid, freshCfg, &cfgPending) && freshCfg.stationCount > 0) {
             strlcpy(freshCfg.uuid, uuid.c_str(), sizeof(freshCfg.uuid));
             cfg = freshCfg;
             transitSaveConfig(cfg);
             Serial.println("[CFG] Config refreshed from server.");
-        } else {
+        } else if (cfgPending) {
             Serial.println("[CFG] Server returned pending_setup — re-registering device.");
             transitRegisterDevice(uuid);
+        } else {
+            Serial.println("[CFG] Config fetch failed (network?) — keeping cached config.");
         }
 
-        // Heartbeat
         String showToken = transitSendHeartbeat(uuid, bat);
         if (showToken.length() > 0) {
             Serial.printf("[AUTH] Server requested token display: %s\n", showToken.c_str());
@@ -319,46 +374,36 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
             return;
         }
 
-        // Sync WiFi networks
         transitSyncWifiNetworks(uuid);
-    }
 
-    // ── OTA check (on timer wakeup or BTN_C) ─────────────────────────────────
-    if (cause == ESP_SLEEP_WAKEUP_TIMER || (cause == ESP_SLEEP_WAKEUP_EXT1 &&
-        (esp_sleep_get_ext1_wakeup_status() & (1ULL << BTN_C)))) {
         OtaInfo ota;
-        if (otaCheckForUpdate(ota)) {
+        if (otaCheckForUpdate(ota, uuid)) {
             _otaAvailable = ota.available;
             if (ota.available) {
                 displayShowOtaProgress(ota.version, 0, 0);
-                otaApplyUpdate(ota.url, [&](size_t done, size_t total) {
+                otaApplyUpdate(ota.url, ota.cacheKey, [&](size_t done, size_t total) {
                     displayShowOtaProgress(ota.version, done, total);
                 });
-                // otaApplyUpdate reboots if successful; if we get here it failed
-                _otaAvailable = false;
+                _otaAvailable = false; // only reached if OTA failed
             }
         }
     }
 
-    // ── Fetch departures for current page ─────────────────────────────────────
+    // ── Fetch + display departures ────────────────────────────────────────────
     int n = max(cfg.stationCount, 1);
     int pageForDisplay = ((_pageIdx % n) + n) % n;
-    _pageIdx = pageForDisplay;  // normalize so next press starts from correct index
+    _pageIdx = pageForDisplay;
     StationDepartures deps = {};
-    bool fetchOk = transitFetchDepartures(uuid, cfg.stations[pageForDisplay], deps);
-    if (!fetchOk) {
-        // Fall back to cached
+    if (!transitFetchDepartures(uuid, cfg.stations[pageForDisplay], deps)) {
         transitLoadCachedDepartures(cfg.stations[pageForDisplay], deps);
     }
 
-    // ── Draw departures ───────────────────────────────────────────────────────
     String timeNow = wifiGetTimeString(15);
     strlcpy(_lastUpdateStr, timeNow.c_str(), sizeof(_lastUpdateStr));
-    displayShowDepartures(deps, bat, batteryIsCharging(),
+    displayShowDepartures(deps, bat, charging,
                           timeNow.c_str(), pageForDisplay, cfg.stationCount,
                           _otaAvailable, _lastHadRed, _lastHadRed);
 
-    // Schedule 1-min time-only refreshes until the next full data fetch
     _fetchedEpoch   = (int32_t)time(nullptr);
     _refreshMinutes = (int8_t)cfg.refreshMinutes;
     _timeTicksLeft  = (cfg.refreshMinutes > 1) ? cfg.refreshMinutes - 1 : 0;
@@ -372,60 +417,89 @@ SET_LOOP_TASK_STACK_SIZE(24 * 1024);
 // ── Arduino entry points ──────────────────────────────────────────────────────
 
 void setup() {
-    // Snapshot wakeup cause + EXT1 pin mask IMMEDIATELY — before anything
-    // else can clear/overwrite the RTC wakeup registers.
+    // Snapshot wakeup registers FIRST — before anything can clear them.
     _wakeupCause = esp_sleep_get_wakeup_cause();
     _ext1Bits    = esp_sleep_get_ext1_wakeup_status();
 
-    // All EXT1 pins can float up through leakage and trigger ghost wakeups.
-    // Boot from deep sleep to here takes ~50-70ms. Ghost floats discharge through
-    // the RTC pull-down in <1ms — so they read LOW at this point. Real presses
-    // (natural tap ~100ms+) are still held HIGH. One read per pin is enough.
+    gpio_hold_dis(GPIO_NUM_2);
+    pinMode(2, OUTPUT);
+    digitalWrite(2, LOW);
+
+    // ── EXT1 ghost filter ─────────────────────────────────────────────────────
+    // BTN_A (GPIO26/DAC2): wake stub ran discharge+re-read at ~25ms; result in
+    //   _wakeStubBtnAConfirmed. Any tap longer than ~25ms is accepted.
+    // BTN_B (GPIO27): floats HIGH during sleep on this board — runtime re-read.
+    // BTN_C/D: no ghost issues; trust EXT1 directly.
     if (_wakeupCause == ESP_SLEEP_WAKEUP_EXT1 && _ext1Bits != 0) {
         uint64_t confirmed = 0;
-        const int btns[] = {BTN_A, BTN_B, BTN_C, BTN_D};
-        for (int pin : btns) {
-            if (_ext1Bits & (1ULL << pin)) {
-                pinMode(pin, INPUT_PULLDOWN);
-                if (digitalRead(pin) == HIGH) confirmed |= (1ULL << pin);
-            }
+
+        if (_ext1Bits & (1ULL << BTN_A)) {
+            if (_wakeStubBtnAConfirmed) confirmed |= (1ULL << BTN_A);
+            _wakeStubBtnAConfirmed = false;
         }
+        if (_ext1Bits & (1ULL << BTN_B)) {
+            rtc_gpio_set_direction(GPIO_NUM_27, RTC_GPIO_MODE_INPUT_ONLY);
+            rtc_gpio_pulldown_en(GPIO_NUM_27);
+            delay(10);
+            if (rtc_gpio_get_level(GPIO_NUM_27)) confirmed |= (1ULL << BTN_B);
+        }
+        if (_ext1Bits & (1ULL << BTN_C)) confirmed |= (1ULL << BTN_C);
+        if (_ext1Bits & (1ULL << BTN_D)) confirmed |= (1ULL << BTN_D);
+
         _ext1Bits = confirmed;
     }
 
     Serial.begin(115200);
     delay(100);
 
+    if (_wakeupCause == ESP_SLEEP_WAKEUP_EXT1)
+        Serial.printf("[STUB] debug=%u ext1=0x%llx\n", _wakeStubDebug, _ext1Bits);
+    _wakeStubDebug = 0;
+
     setupPowerLatch();
     initButtons();
 
-    // If EXT1 fired but all pins were already LOW (ghost wakeup with bits=0 or
-    // bits that resolved before our read), go back to sleep for remaining interval.
+    // ── BTN_D long-hold detection ─────────────────────────────────────────────
+    // If BTN_D woke us, sample the pin for up to 3s. A continuous hold triggers
+    // silent token refresh instead of the normal token-display shortcut.
+    if (_wakeupCause == ESP_SLEEP_WAKEUP_EXT1 && (_ext1Bits & (1ULL << BTN_D))) {
+        uint32_t held = 0;
+        while (digitalRead(BTN_D) && held < 3000) { delay(100); held += 100; }
+        _btnDLongHold = (held >= 3000);
+        if (_btnDLongHold) Serial.println("[BTN] D long-hold detected.");
+    }
+
+    // ── Shutdown-sleep ghost guard ────────────────────────────────────────────
+    // In shutdown sleep there's no timer, so any ghost wakeup must go straight
+    // back to sleep without touching the display or incrementing counters.
+    if (_inShutdownSleep) {
+        if (_ext1Bits == 0) {
+            prepareSleep();
+            esp_deep_sleep_start();
+        }
+        // Real button press — exit shutdown sleep and boot normally.
+        _inShutdownSleep = false;
+        _inactiveBoots   = 0;
+    }
+
+    // ── Normal ghost guard ────────────────────────────────────────────────────
+    // EXT1 fired but all pins resolved LOW — go back to sleep for the remaining
+    // interval rather than running a full boot cycle.
     if (_wakeupCause == ESP_SLEEP_WAKEUP_EXT1 && _ext1Bits == 0) {
         time_t now = time(nullptr);
-        time_t nextFetch = (time_t)_fetchedEpoch + (time_t)_refreshMinutes * 60;
-        int32_t remainSecs = (int32_t)(nextFetch - now);
+        int32_t remainSecs = (int32_t)((time_t)_fetchedEpoch + _refreshMinutes * 60 - now);
         if (_fetchedEpoch > 0 && now > 1000000L && remainSecs > 10) {
-            // Still early — reconfigure sleep and go back immediately (no Serial spam)
-            const gpio_num_t ext1Pins[] = {(gpio_num_t)BTN_A, (gpio_num_t)BTN_B,
-                                           (gpio_num_t)BTN_C, (gpio_num_t)BTN_D};
-            for (auto pin : ext1Pins) {
-                rtc_gpio_init(pin);
-                rtc_gpio_set_direction(pin, RTC_GPIO_MODE_INPUT_ONLY);
-                rtc_gpio_pulldown_en(pin);
-                rtc_gpio_pullup_dis(pin);
-            }
-            uint64_t ext1Mask = (1ULL<<BTN_A)|(1ULL<<BTN_B)|(1ULL<<BTN_C)|(1ULL<<BTN_D);
-            esp_sleep_enable_ext1_wakeup(ext1Mask, ESP_EXT1_WAKEUP_ANY_HIGH);
+            prepareSleep();
             esp_sleep_enable_timer_wakeup((uint64_t)remainSecs * 1000000ULL);
             esp_deep_sleep_start();
         }
+        _wasGhostWakeup = true;
         _wakeupCause = ESP_SLEEP_WAKEUP_TIMER;
-        Serial.println("[BTN] EXT1 ghost wakeup (all pins LOW at read) → treating as timer");
+        Serial.println("[BTN] EXT1 ghost wakeup — treating as timer");
     }
 
     ledInit();
-    analogSetAttenuation(ADC_11db);// Full 0-3.3 V range for battery ADC
+    analogSetAttenuation(ADC_11db);
 
     _bootCount++;
     Serial.printf("\n=== Transit Keychain v%s  boot #%lu ===\n",
@@ -436,7 +510,6 @@ void setup() {
     esp_sleep_wakeup_cause_t cause = _wakeupCause;
     Serial.printf("[BOOT] Wakeup cause: %d  EXT1 bits: 0x%llx\n", (int)cause, _ext1Bits);
 
-    // Cold boot or unknown = first boot check
     if (cause == ESP_SLEEP_WAKEUP_UNDEFINED) {
         Preferences chk;
         chk.begin(PREFS_WIFI, true);
@@ -458,7 +531,6 @@ void setup() {
 }
 
 void loop() {
-    // All work done in setup(); deep sleep is entered at the end.
-    // loop() should never be reached.
+    // All work is done in setup(); deep sleep is entered before loop() runs.
     delay(1000);
 }

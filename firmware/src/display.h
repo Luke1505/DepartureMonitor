@@ -12,13 +12,13 @@
 // ── Global display instance ───────────────────────────────────────────────────
 #ifdef DISPLAY_BW
 #include <GxEPD2_BW.h>
-GxEPD2_BW<GxEPD2_213_BN, GxEPD2_213_BN::HEIGHT> display(
+static GxEPD2_BW<GxEPD2_213_BN, GxEPD2_213_BN::HEIGHT> display(
     GxEPD2_213_BN(EINK_CS, EINK_DC, EINK_RST, EINK_BUSY));
 // BW-only: red color maps to black
 #define GxEPD_RED GxEPD_BLACK
 #else
 // Default: BWR 3-color
-GxEPD2_3C<GxEPD2_213_Z98c, GxEPD2_213_Z98c::HEIGHT> display(
+static GxEPD2_3C<GxEPD2_213_Z98c, GxEPD2_213_Z98c::HEIGHT> display(
     GxEPD2_213_Z98c(EINK_CS, EINK_DC, EINK_RST, EINK_BUSY));
 #endif
 
@@ -335,24 +335,6 @@ static void _printRight(int rightX, int y, const String& text) {
     // rightX is the desired right edge; account for x1 (left bearing offset)
     display.setCursor(rightX - (int)w - x1, y);
     display.print(text);
-}
-
-// WMO weather code → ASCII icon (fits 3-colour display)
-static const char* _wmoIcon(int code, bool isDay) {
-    if (code == 0)             return isDay ? "SUN" : "CLR";
-    if (code <= 3)             return isDay ? "SUN" : "CLR";
-    if (code <= 9)             return "HZY";
-    if (code <= 19)            return "FOG";
-    if (code <= 29)            return "DRZ";
-    if (code <= 39)            return "FOG";
-    if (code <= 49)            return "FOG";
-    if (code <= 59)            return "DRZ";
-    if (code <= 69)            return "RAN";
-    if (code <= 79)            return "SNW";
-    if (code <= 84)            return "RAN";
-    if (code <= 86)            return "SNW";
-    if (code <= 94)            return "THN";
-    return "THN";
 }
 
 // ── Display init ──────────────────────────────────────────────────────────────
@@ -697,14 +679,13 @@ inline void displayShowDepartures(const StationDepartures& data,
                                    bool hasOtaUpdate,
                                    bool lastHadRed,
                                    bool& outHadRed) {
-    outHadRed = false;
-
     bool needsRed = hasOtaUpdate || (batPct <= 15);
     for (int i = 0; i < min(data.count, ROW_CNT) && !needsRed; i++) {
         const Departure& dep = data.rows[i];
         needsRed = dep.isCancelled || dep.minsUntil <= 0 || dep.delayMins > 0;
     }
     bool fullRefresh = needsRed || lastHadRed;
+    outHadRed = false;
     if (fullRefresh) display.setFullWindow();
     else             display.setPartialWindow(0, 0, DW, DH);
     display.firstPage();

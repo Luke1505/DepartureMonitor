@@ -488,6 +488,17 @@ export default function StationsTab({ config, deviceId, onSave }) {
 
   const initialized = useRef(false)
   const saveTimer = useRef(null)
+  const onSaveRef = useRef(onSave)
+  useEffect(() => { onSaveRef.current = onSave }, [onSave])
+
+  // Re-sync when config prop changes (e.g. after save round-trip or parent reload)
+  useEffect(() => {
+    initialized.current = false
+    setStations(
+      (config.stations || []).map((s, i) => ({ ...s, _id: s._id || `s-${i}-${Date.now()}` }))
+    )
+    setExpandedId(null)
+  }, [config])
 
   // Auto-save when stations change (skips initial render)
   useEffect(() => {
@@ -498,7 +509,7 @@ export default function StationsTab({ config, deviceId, onSave }) {
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
       const clean = stations.map(({ _id, ...rest }) => rest)
-      onSave({ stations: clean })
+      onSaveRef.current({ stations: clean })
     }, 1500)
     return () => clearTimeout(saveTimer.current)
   }, [stations])
@@ -531,12 +542,6 @@ export default function StationsTab({ config, deviceId, onSave }) {
     setStations((prev) => [...prev, toAdd])
     setNewStation({ ...EMPTY_STATION, _id: 'new' })
     setAdding(false)
-  }
-
-  function save() {
-    // Strip internal _id fields before saving
-    const clean = stations.map(({ _id, ...rest }) => rest)
-    onSave({ stations: clean })
   }
 
   return (

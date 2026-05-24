@@ -54,9 +54,9 @@ app.use('/api/device', deviceRouter(pool, requireDeviceToken));
 //   protected: POST /:id/config (web UI saves)
 app.use('/api/device', configRouter(pool, requireDeviceToken));
 
-// Transit + firmware device endpoints — always open (device uses these)
+// Transit (open) + firmware (mixed: OTA check/download require device token, manifest/upload do not)
 app.use('/api/transit', transitRouter(pool, requireDeviceToken));
-app.use('/api/firmware', firmwareRouter(pool));
+app.use('/api/firmware', firmwareRouter(pool, requireDeviceToken));
 
 // Serve frontend static files
 const publicDir = join(__dirname, '..', 'public');
@@ -68,6 +68,9 @@ app.get('*', (_req, res) => {
 });
 
 async function start() {
+  if (!process.env.ADMIN_SECRET) {
+    console.warn('WARNING: ADMIN_SECRET is not set — admin endpoints (/token/reset, /firmware/upload) will reject all requests');
+  }
   try {
     await initDb(pool);
     app.listen(PORT, () => {

@@ -23,7 +23,7 @@
 // ── Buttons (active LOW, internal pull-up) ──────────────────────────────────
 #define BTN_A 26  // Next page / confirm
 #define BTN_B 27  // Previous page / back
-#define BTN_C 14  // Settings shortcut
+#define BTN_C 14  // Force refresh
 #define BTN_D 15  // RTC GPIO, safe with pull-down (strapping: LOW = normal boot)
 
 // ── RGB Status LED (active HIGH via PWM) ────────────────────────────────────

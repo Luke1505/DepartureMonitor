@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { deviceRateLimiter } from '../middleware/rateLimiter.js';
 import { getDepartures, searchStops } from '../services/transitApi.js';
-import { getWeather } from '../services/weatherApi.js';
 
 export default function transitRouter(pool, requireDeviceToken) {
   const router = Router();
@@ -31,20 +30,6 @@ export default function transitRouter(pool, requireDeviceToken) {
     } catch (err) {
       console.error(err);
       res.status(502).json({ error: 'Haltestellensuche fehlgeschlagen' });
-    }
-  });
-
-  // GET /api/transit/weather?lat=&lon=
-  router.get('/weather', deviceRateLimiter, async (req, res) => {
-    const { lat, lon } = req.query;
-    if (!lat || !lon) return res.status(400).json({ error: 'lat and lon required' });
-
-    try {
-      const weather = await getWeather(lat, lon);
-      res.json(weather);
-    } catch (err) {
-      console.error(err);
-      res.status(502).json({ error: 'Wetterdaten konnten nicht abgerufen werden' });
     }
   });
 

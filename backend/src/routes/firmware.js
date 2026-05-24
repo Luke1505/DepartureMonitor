@@ -1,41 +1,22 @@
 import { Router } from 'express';
-import { createReadStream, existsSync, mkdirSync } from 'fs';
+import { createReadStream, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { Readable } from 'stream';
 import multer from 'multer';
 import { triggerBuild, getBuildStatus } from '../services/buildWorker.js';
+import { requireAdmin } from '../middleware/adminAuth.js';
 
 const OTA_DIR = process.env.OTA_DIR || './firmware';
-const ADMIN_SECRET = process.env.ADMIN_SECRET || '';
 
-// multer storage: saves to {OTA_DIR}/{version}/{fieldname}.bin
-const storage = multer.diskStorage({
-  destination: (req, _file, cb) => {
-    const version = req.body?.version || 'unknown';
-    const dir = join(OTA_DIR, version);
-    mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (_req, file, cb) => {
-    const names = { bootloader: 'bootloader.bin', partitions: 'partitions.bin', firmware: 'firmware.bin' };
-    cb(null, names[file.fieldname] || file.originalname);
-  },
-});
-const upload = multer({ storage });
+// Use memory storage so req.body.version is fully parsed before we write files.
+// Files are written to disk in the route handler once version is known.
+const upload = multer({ storage: multer.memoryStorage() });
 
-function requireAdmin(req, res, next) {
-  const secret = req.headers['x-admin-secret'];
-  if (!ADMIN_SECRET || secret !== ADMIN_SECRET) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  next();
-}
-
-export default function firmwareRouter(pool) {
+export default function firmwareRouter(pool, requireDeviceToken) {
   const router = Router();
 
   // GET /api/firmware/ota-download/:filename  — proxies binary from build-worker to device
-  router.get('/ota-download/:filename', async (req, res) => {
+  router.get('/ota-download/:filename', requireDeviceToken, async (req, res) => {
     const { filename } = req.params;
     if (!filename.endsWith('.bin') || filename.includes('..') || filename.includes('/')) {
       return res.status(400).json({ error: 'Invalid filename' });
@@ -61,7 +42,7 @@ export default function firmwareRouter(pool) {
   });
 
   // GET /api/firmware/ota-check?deviceId=<id>
-  router.get('/ota-check', async (req, res) => {
+  router.get('/ota-check', requireDeviceToken, async (req, res) => {
     const { deviceId } = req.query;
     if (!deviceId) return res.status(400).json({ error: 'deviceId required' });
 
@@ -76,8 +57,9 @@ export default function firmwareRouter(pool) {
       const { job_id, status, cache_key } = await triggerBuild(display_type, language);
 
       if (status === 'ready') {
-        const url = `/api/firmware/ota-download/${cache_key}.bin`;
-        return res.json({ available: true, url, cache_key });
+        const version = (cache_key ? cache_key.split('-').slice(1, -2).join('-') : '') || cache_key || 'dev';
+        const url = `/api/firmware/ota-download/${cache_key}-firmware.bin`;
+        return res.json({ available: true, url, cache_key, version });
       }
       if (status === 'building') {
         return res.json({ available: false, building: true, retry_after: 60, job_id });
@@ -90,7 +72,7 @@ export default function firmwareRouter(pool) {
   });
 
   // GET /api/firmware/ota-status/:job_id
-  router.get('/ota-status/:job_id', async (req, res) => {
+  router.get('/ota-status/:job_id', requireDeviceToken, async (req, res) => {
     const { job_id } = req.params;
     try {
       const result = await getBuildStatus(job_id);
@@ -137,6 +119,10 @@ export default function firmwareRouter(pool) {
   // GET /api/firmware/versions/:channel
   router.get('/versions/:channel', async (req, res) => {
     const { channel } = req.params;
+    const validChannels = ['stable', 'beta', 'dev'];
+    if (!validChannels.includes(channel)) {
+      return res.status(400).json({ error: 'Invalid channel' });
+    }
     try {
       const { rows } = await pool.query(
         'SELECT * FROM firmware_versions WHERE channel = $1 ORDER BY created_at DESC',
@@ -350,15 +336,26 @@ export default function firmwareRouter(pool) {
       const { version, changelog, channel = 'stable' } = req.body;
 
       if (!version) return res.status(400).json({ error: 'version required' });
-      if (!req.files?.firmware) return res.status(400).json({ error: 'firmware file required' });
+      if (!req.files?.firmware?.[0]) return res.status(400).json({ error: 'firmware file required' });
+      // Validate version to prevent path traversal
+      if (!/^[a-zA-Z0-9._-]+$/.test(version) || version.includes('..')) {
+        return res.status(400).json({ error: 'Invalid version' });
+      }
 
       try {
-        // If stable channel, unset previous latest for that channel
-        if (channel === 'stable') {
-          await pool.query(
-            "UPDATE firmware_versions SET is_latest = FALSE WHERE channel = 'stable'"
-          );
+        // Write uploaded buffers to disk now that req.body is fully parsed
+        const dir = join(OTA_DIR, version);
+        mkdirSync(dir, { recursive: true });
+        for (const field of ['bootloader', 'partitions', 'firmware']) {
+          const file = req.files[field]?.[0];
+          if (file) writeFileSync(join(dir, `${field}.bin`), file.buffer);
         }
+
+        // Unset previous latest for this channel before marking new one
+        await pool.query(
+          'UPDATE firmware_versions SET is_latest = FALSE WHERE channel = $1',
+          [channel]
+        );
 
         const { rows } = await pool.query(
           `INSERT INTO firmware_versions (version, filename, changelog, is_latest, channel)

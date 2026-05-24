@@ -77,12 +77,9 @@ export const requestTokenDisplay = (id) =>
 export const regenerateToken = (id) =>
   requestAuth(`/api/device/${id}/token/regenerate`, id, { method: 'POST' })
 
-// --- Device registration (open, called by firmware) ---
+// --- Device registration (open, called by firmware + SetupPage) ---
 export const registerDevice = (id, body) =>
   request(`/api/device/${id}/register`, { method: 'POST', body: JSON.stringify(body) })
-
-export const heartbeat = (id, data) =>
-  request(`/api/device/${id}/heartbeat`, { method: 'POST', body: JSON.stringify(data) })
 
 // --- Transit ---
 export const getDepartures = (stopId, api, deviceId) =>
@@ -90,11 +87,6 @@ export const getDepartures = (stopId, api, deviceId) =>
 
 export const searchStops = (q, api) =>
   request(`/api/transit/stops?q=${encodeURIComponent(q)}&api=${api || 'vrr'}`)
-
-export const getWeather = (lat, lon) =>
-  request(`/api/transit/weather?lat=${lat}&lon=${lon}`)
-
-export const getAnalytics = (id) => request(`/api/transit/analytics/${id}`)
 
 // --- Firmware ---
 export const getFirmwareLatest = (channel = 'stable') => request(`/api/firmware/latest?channel=${channel}`)

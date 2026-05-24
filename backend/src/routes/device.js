@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { registerRateLimiter, deviceRateLimiter, tokenRequestDeviceLimiter, tokenRequestIpLimiter } from '../middleware/rateLimiter.js';
 import { generateToken } from '../middleware/deviceAuth.js';
+import { requireAdmin } from '../middleware/adminAuth.js';
 
 export default function deviceRouter(pool, requireDeviceToken) {
   const router = Router();
@@ -58,7 +59,11 @@ export default function deviceRouter(pool, requireDeviceToken) {
          RETURNING id, name, firmware, is_setup, access_token`,
         [id, name || null, firmware || null, token]
       );
-      res.json(rows[0]);
+      // Only return the token on first registration (no prior token existed).
+      // Subsequent calls preserve the existing token but don't expose it to callers.
+      const responseRow = { ...rows[0] };
+      if (existing.rows[0]?.access_token) delete responseRow.access_token;
+      res.json(responseRow);
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: 'Internal server error' });
@@ -138,6 +143,23 @@ export default function deviceRouter(pool, requireDeviceToken) {
     }
   });
 
+  // POST /api/device/:id/token/reset  — admin only; clears token so device self-heals on next 401
+  router.post('/:id/token/reset', requireAdmin, async (req, res) => {
+    const { id } = req.params;
+    const newToken = generateToken();
+    try {
+      const { rowCount } = await pool.query(
+        'UPDATE devices SET access_token = $1 WHERE id = $2',
+        [newToken, id]
+      );
+      if (!rowCount) return res.status(404).json({ error: 'Device not found' });
+      res.json({ status: 'reset' });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // POST /api/device/:id/token/regenerate  — requires device token
   router.post('/:id/token/regenerate', requireDeviceToken, async (req, res) => {
     const { id } = req.params;
@@ -198,7 +220,7 @@ export default function deviceRouter(pool, requireDeviceToken) {
     const { id } = req.params;
     try {
       const { rows } = await pool.query(
-        'SELECT id, ssid, created_at FROM wifi_networks WHERE device_id = $1 ORDER BY created_at',
+        'SELECT id, ssid, password, created_at FROM wifi_networks WHERE device_id = $1 ORDER BY created_at',
         [id]
       );
       res.json(rows);

@@ -61,15 +61,15 @@ function ApiCard({ title, badge, children }) {
   )
 }
 
-export default function ApisTab({ config, onSave }) {
-  const DEFAULT_APIS = {
-    vrr: { endpoint: 'https://efa.vrr.de/vrr/XML_DM_REQUEST' },
-    mvv: { endpoint: 'https://efa.mvv-muenchen.de/mvv/XML_DM_REQUEST' },
-    db: { clientId: '', clientSecret: '' },
-    hvv: { apiKey: '', endpoint: 'https://api.geofox.de/gti/public/' },
-    custom: [],
-  }
+const DEFAULT_APIS = {
+  vrr: { endpoint: 'https://efa.vrr.de/vrr/XML_DM_REQUEST' },
+  mvv: { endpoint: 'https://efa.mvv-muenchen.de/mvv/XML_DM_REQUEST' },
+  db: { clientId: '', clientSecret: '' },
+  hvv: { apiKey: '', endpoint: 'https://api.geofox.de/gti/public/' },
+  custom: [],
+}
 
+export default function ApisTab({ config, onSave }) {
   const [apis, setApis] = useState(() => {
     const src = config.apis || {}
     return {
@@ -79,12 +79,14 @@ export default function ApisTab({ config, onSave }) {
       mvv: { ...DEFAULT_APIS.mvv, ...(src.mvv || {}) },
       db: { ...DEFAULT_APIS.db, ...(src.db || {}) },
       hvv: { ...DEFAULT_APIS.hvv, ...(src.hvv || {}) },
-      custom: src.custom || [],
+      custom: (src.custom || []).map((c) => ({ ...c, _key: c._key || crypto.randomUUID() })),
     }
   })
 
   const initialized = useRef(false)
   const saveTimer = useRef(null)
+  const onSaveRef = useRef(onSave)
+  useEffect(() => { onSaveRef.current = onSave }, [onSave])
 
   useEffect(() => {
     if (!initialized.current) {
@@ -92,7 +94,10 @@ export default function ApisTab({ config, onSave }) {
       return
     }
     clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => onSave({ apis }), 1500)
+    saveTimer.current = setTimeout(() => {
+      const clean = { ...apis, custom: (apis.custom || []).map(({ _key, ...rest }) => rest) }
+      onSaveRef.current({ apis: clean })
+    }, 1500)
     return () => clearTimeout(saveTimer.current)
   }, [apis])
 
@@ -103,7 +108,7 @@ export default function ApisTab({ config, onSave }) {
   function addCustomApi() {
     setApis((prev) => ({
       ...prev,
-      custom: [...(prev.custom || []), { name: '', type: 'efa', endpoint: '', apiKey: '', authHeader: '' }],
+      custom: [...(prev.custom || []), { _key: crypto.randomUUID(), name: '', type: 'efa', endpoint: '', apiKey: '', authHeader: '' }],
     }))
   }
 
@@ -230,7 +235,7 @@ export default function ApisTab({ config, onSave }) {
         )}
 
         {(apis.custom || []).map((api, i) => (
-          <div key={i} className="border border-[#eeeeee] dark:border-[#2e2e2e] rounded-xl p-3 mb-2 space-y-2 animate-fade-in-up">
+          <div key={api._key ?? i} className="border border-[#eeeeee] dark:border-[#2e2e2e] rounded-xl p-3 mb-2 space-y-2 animate-fade-in-up">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-[#111] dark:text-[#e4e4e7]">
                 {api.name || `API ${i + 1}`}

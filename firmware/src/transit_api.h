@@ -176,8 +176,9 @@ inline String transitGetAccessToken() {
     return tok;
 }
 
-// Authenticated GET — sends x-device-token header
-static String _apiGetAuth(const String& path) {
+// Authenticated GET — sends x-device-token header.
+// On 401, re-registers the device (recovering a reset token) and retries once.
+static String _apiGetAuth(const String& uuid, const String& path, bool retry = true) {
     String url = String(SERVER_BASE_URL) + path;
     HTTPClient http;
     WiFiClientSecure secureClient;
@@ -199,6 +200,13 @@ static String _apiGetAuth(const String& path) {
     String body;
     if (code == 200) {
         body = http.getString();
+    } else if (code == 401 && retry && uuid.length() > 0) {
+        http.end();
+        Serial.println("[AUTH] 401 on GET — re-registering and retrying.");
+        if (transitRegisterDevice(uuid)) {
+            return _apiGetAuth(uuid, path, false);
+        }
+        return "";
     } else {
         Serial.printf("[API] GET %s -> %d\n", url.c_str(), code);
     }
@@ -248,6 +256,11 @@ inline String transitSendHeartbeat(const String& uuid, uint8_t batPct) {
                 prefs.end();
             }
         }
+    } else if (code == 401) {
+        Serial.println("[AUTH] 401 on heartbeat — re-registering (token takes effect next boot).");
+        transitRegisterDevice(uuid);
+    } else {
+        Serial.printf("[API] Heartbeat -> %d\n", code);
     }
     http.end();
     return showToken;
@@ -255,7 +268,7 @@ inline String transitSendHeartbeat(const String& uuid, uint8_t batPct) {
 
 // Fetch WiFi networks from server (auth'd) and save any new ones to NVS
 inline void transitSyncWifiNetworks(const String& uuid) {
-    String body = _apiGetAuth("/api/device/" + uuid + "/wifi");
+    String body = _apiGetAuth(uuid, "/api/device/" + uuid + "/wifi");
     if (body.length() == 0) return;
 
     JsonDocument doc;
@@ -294,15 +307,31 @@ static bool _parseConfig(const String& json, DeviceConfig& cfg) {
         strlcpy(st.icon,         s["icon"]     | "",    sizeof(st.icon));
         strlcpy(st.api,          s["api"]      | "vrr", sizeof(st.api));
         strlcpy(st.filterTypes,  s["filterTypes"] | "", sizeof(st.filterTypes));
-        st.timeWindowStart = s["timeWindows"][0] | 0;
-        st.timeWindowEnd   = s["timeWindows"][1] | 120;
+        // timeWindows: [{from:"HH:MM", to:"HH:MM"}] — convert to minutes-since-midnight
+        auto hhmm = [](const char* t) -> int {
+            if (!t || strlen(t) < 5) return 0;
+            return ((t[0]-'0')*10 + (t[1]-'0')) * 60 + ((t[3]-'0')*10 + (t[4]-'0'));
+        };
+        JsonObject tw = s["timeWindows"][0].as<JsonObject>();
+        if (!tw.isNull()) {
+            st.timeWindowStart = hhmm(tw["from"] | "00:00");
+            st.timeWindowEnd   = hhmm(tw["to"]   | "23:59");
+        } else {
+            st.timeWindowStart = 0;
+            st.timeWindowEnd   = 1440;
+        }
     }
     return true;
 }
 
-inline bool transitFetchConfig(const String& uuid, DeviceConfig& cfg) {
-    String body = _apiGet("/api/device/" + uuid + "/config");
+inline bool transitFetchConfig(const String& uuid, DeviceConfig& cfg, bool* wasPending = nullptr) {
+    if (wasPending) *wasPending = false;
+    String body = _apiGetAuth(uuid, "/api/device/" + uuid + "/config");
     if (body.length() == 0) return false;
+    if (body.indexOf("\"pending_setup\"") >= 0) {
+        if (wasPending) *wasPending = true;
+        return false;
+    }
     return _parseConfig(body, cfg);
 }
 
@@ -380,9 +409,11 @@ inline bool transitLoadConfig(const String& uuid, DeviceConfig& cfg) {
 // ── Departures ────────────────────────────────────────────────────────────────
 
 static char _typeFromLine(const char* line) {
+    if (!line[0])                                          return 'B';
+    if (strncmp(line, "STR", 3) == 0)                     return 'T';
     if (line[0] == 'U')                                    return 'U';
     if (line[0] == 'S')                                    return 'S';
-    if (line[0] == 'T' || strncmp(line, "STR", 3) == 0)   return 'T';
+    if (line[0] == 'T')                                    return 'T';
     if (strncmp(line,"RE",2)==0 || strncmp(line,"RB",2)==0 ||
         strncmp(line,"IC",2)==0 || strncmp(line,"EC",2)==0) return 'R';
     return 'B';
@@ -393,7 +424,7 @@ inline bool transitFetchDepartures(const String& uuid, const DeviceConfig::Stati
     String path = "/api/transit/departures?stopId=" + String(station.stopId)
                 + "&api=" + String(station.api)
                 + "&deviceId=" + uuid;
-    String body = _apiGet(path);
+    String body = _apiGetAuth(uuid, path);
     if (body.length() == 0) { result.ok = false; return false; }
 
     JsonDocument doc;

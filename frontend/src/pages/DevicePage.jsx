@@ -23,7 +23,7 @@ const DEFAULT_CONFIG = {
     hvv: { apiKey: '', endpoint: 'https://api.geofox.de/gti/public/' },
     custom: [],
   },
-  refresh_minutes: 3,
+  refresh_minutes: 1,
   timezone: 'Europe/Berlin',
   shutdown_minutes: 30,
   bat_warn_pct: 20,
@@ -166,8 +166,8 @@ export default function DevicePage() {
   const [device, setDevice] = useState(null)
   const [config, setConfig] = useState(DEFAULT_CONFIG)
   const [activeTab, setActiveTab] = useState(() => {
-    const tab = new URLSearchParams(window.location.search).get('tab')
-    return TABS.some(t => t.id === tab) ? tab : 'stations'
+    const tab = searchParams.get('tab')
+    return TABS.some((t) => t.id === tab) ? tab : 'stations'
   })
   const [loading, setLoading] = useState(true)
   const [locked, setLocked] = useState(false)
@@ -184,7 +184,7 @@ export default function DevicePage() {
   }, [id, searchParams, navigate])
 
   const load = useCallback(async () => {
-    if (searchParams.get('token')) return // wait for redirect
+    if (new URLSearchParams(window.location.search).get('token')) return // wait for redirect
     setLoading(true)
     setError(null)
     try {
@@ -201,7 +201,7 @@ export default function DevicePage() {
     } finally {
       setLoading(false)
     }
-  }, [id, searchParams])
+  }, [id])
 
   useEffect(() => { load() }, [load])
 
@@ -234,7 +234,15 @@ export default function DevicePage() {
   }
 
   if (locked) {
-    return <UnlockScreen deviceId={id} onUnlocked={(dev) => { addKnownDevice(id); setDevice(dev); setLocked(false); load() }} />
+    return <UnlockScreen deviceId={id} onUnlocked={async (dev) => {
+      addKnownDevice(id)
+      setDevice(dev)
+      setLocked(false)
+      try {
+        const cfg = await getConfig(id)
+        if (cfg && cfg.status !== 'pending_setup') setConfig(cfg)
+      } catch { /* non-fatal — config loads on next full refresh */ }
+    }} />
   }
 
   if (error) {

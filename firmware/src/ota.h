@@ -3,28 +3,47 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
 #include <Update.h>
 #include "config.h"
 #include "led.h"
 
 struct OtaInfo {
-    char version[16];
+    char version[32];
     char url[256];
+    char cacheKey[64];
     bool available;
+    bool building;
 };
 
-inline bool otaCheckForUpdate(OtaInfo& info) {
-    WiFiClientSecure client;
-    client.setInsecure();
+// Returns false only on network/parse failure; info.building=true is a valid non-error result.
+inline bool otaCheckForUpdate(OtaInfo& info, const String& uuid) {
+    memset(&info, 0, sizeof(info));
 
+    String url = String(SERVER_BASE_URL) + "/api/firmware/ota-check?deviceId=" + uuid;
     HTTPClient http;
-    String url = String(SERVER_BASE_URL) + "/api/firmware/latest";
-    http.begin(client, url);
+    WiFiClientSecure secureClient;
+    if (url.startsWith("https://")) {
+        secureClient.setInsecure();
+        http.begin(secureClient, url);
+    } else {
+        http.begin(url);
+    }
     http.setTimeout(API_TIMEOUT_MS);
+    http.addHeader("User-Agent", "TransitKeychain/" FIRMWARE_VERSION);
+
+    Preferences prefs;
+    prefs.begin(PREFS_TRANSIT, true);
+    String token     = prefs.getString("access_token", "");
+    String storedKey = prefs.getString("ota_key", "");
+    prefs.end();
+
+    if (token.length() > 0) http.addHeader("x-device-token", token);
+
     int code = http.GET();
     if (code != 200) {
+        Serial.printf("[OTA] Check failed: %d\n", code);
         http.end();
-        info.available = false;
         return false;
     }
 
@@ -32,39 +51,55 @@ inline bool otaCheckForUpdate(OtaInfo& info) {
     http.end();
 
     JsonDocument doc;
-    if (deserializeJson(doc, body) != DeserializationError::Ok) {
-        info.available = false;
-        return false;
+    if (deserializeJson(doc, body) != DeserializationError::Ok) return false;
+
+    if (doc["building"] | false) {
+        info.building = true;
+        Serial.println("[OTA] Build in progress — will check next boot.");
+        return true;
     }
 
-    const char* latest = doc["version"] | "";
-    strlcpy(info.version, latest, sizeof(info.version));
+    if (!(doc["available"] | false)) {
+        Serial.println("[OTA] No build available.");
+        return true;
+    }
 
-    // Simple semver compare: update if latest != current
-    info.available = (strcmp(latest, FIRMWARE_VERSION) != 0 && strlen(latest) > 0);
+    const char* cacheKey = doc["cache_key"] | "";
+    const char* dlUrl    = doc["url"]        | "";
+    const char* ver      = doc["version"]    | "";
+
+    strlcpy(info.cacheKey, cacheKey, sizeof(info.cacheKey));
+    strlcpy(info.version,  ver,      sizeof(info.version));
+
+    // Only update if build worker returned a cache key we haven't installed yet
+    info.available = (strlen(cacheKey) > 0 && strcmp(cacheKey, storedKey.c_str()) != 0);
 
     if (info.available) {
-        // Build download URL from manifest path
-        String downloadUrl = String(SERVER_BASE_URL) + "/api/firmware/download/"
-                           + String(latest) + "/firmware.bin";
-        strlcpy(info.url, downloadUrl.c_str(), sizeof(info.url));
-        Serial.printf("[OTA] Update available: %s → %s\n", FIRMWARE_VERSION, latest);
+        String fullUrl = String(dlUrl);
+        if (fullUrl.startsWith("/")) fullUrl = String(SERVER_BASE_URL) + fullUrl;
+        strlcpy(info.url, fullUrl.c_str(), sizeof(info.url));
+        Serial.printf("[OTA] New build available: %s (prev: %s)\n", cacheKey, storedKey.c_str());
     } else {
-        Serial.printf("[OTA] Already at latest: %s\n", FIRMWARE_VERSION);
+        Serial.printf("[OTA] Already at current build: %s\n", cacheKey);
     }
+
     return true;
 }
 
 // progress_cb: called with bytes done and total; pass nullptr to skip
-inline bool otaApplyUpdate(const char* firmwareUrl,
+inline bool otaApplyUpdate(const char* firmwareUrl, const char* cacheKey,
                             std::function<void(size_t, size_t)> progress_cb = nullptr) {
-    WiFiClientSecure client;
-    client.setInsecure();
-
     HTTPClient http;
+    WiFiClientSecure secureClient;
     Serial.printf("[OTA] Downloading: %s\n", firmwareUrl);
-    http.begin(client, firmwareUrl);
-    http.setTimeout(60000);  // 60 s for large binary
+    String urlStr = String(firmwareUrl);
+    if (urlStr.startsWith("https://")) {
+        secureClient.setInsecure();
+        http.begin(secureClient, urlStr);
+    } else {
+        http.begin(urlStr);
+    }
+    http.setTimeout(60000);
     int code = http.GET();
     if (code != 200) {
         Serial.printf("[OTA] HTTP error: %d\n", code);
@@ -85,18 +120,33 @@ inline bool otaApplyUpdate(const char* firmwareUrl,
     size_t written = 0;
     uint8_t buf[512];
 
-    while (http.connected() && written < (size_t)contentLen) {
+    bool unknownLen = (contentLen <= 0);
+    uint32_t lastProgress = millis();
+    while (http.connected() && (unknownLen || written < (size_t)contentLen)) {
         int avail = stream->available();
         if (avail > 0) {
+            lastProgress = millis();
             int toRead = min(avail, (int)sizeof(buf));
             int n = stream->readBytes(buf, toRead);
-            Update.write(buf, n);
-            written += n;
+            size_t w = Update.write(buf, n);
+            if (w != (size_t)n) {
+                Serial.printf("[OTA] Write error at %u\n", written);
+                http.end();
+                return false;
+            }
+            written += w;
             ledOta();
-            if (progress_cb) progress_cb(written, contentLen);
+            if (progress_cb) progress_cb(written, unknownLen ? 0 : (size_t)contentLen);
         } else {
+            if (millis() - lastProgress > 15000) {
+                Serial.println("[OTA] Stalled download — aborting.");
+                Update.abort();
+                http.end();
+                return false;
+            }
             delay(1);
         }
+        if (Update.isFinished()) break;
     }
     http.end();
 
@@ -106,9 +156,15 @@ inline bool otaApplyUpdate(const char* firmwareUrl,
         return false;
     }
 
+    // Persist the installed cache key — next boot's check will skip this exact build
+    Preferences prefs;
+    prefs.begin(PREFS_TRANSIT, false);
+    prefs.putString("ota_key", cacheKey);
+    prefs.end();
+
     Serial.println("[OTA] Update complete — rebooting.");
     ledOk();
     delay(500);
     ESP.restart();
-    return true;  // Never reached
+    return true;
 }
