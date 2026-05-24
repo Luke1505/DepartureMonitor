@@ -1,7 +1,7 @@
 import express from 'express';
 import { createHash } from 'crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, copyFileSync, createReadStream } from 'fs';
-import { cp, readdir } from 'fs/promises';
+import { cp, readdir, rm } from 'fs/promises';
 import { spawn } from 'child_process';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
@@ -27,7 +27,6 @@ mkdirSync(PIO_CACHE_DIR, { recursive: true });
 function computeSourceHash() {
   const hash = createHash('sha256');
   const srcDir = join(FIRMWARE_DIR, 'src');
-  const iniFile = join(FIRMWARE_DIR, '..', 'platformio.ini');
 
   // Hash all files in firmware/src, sorted for determinism
   if (existsSync(srcDir)) {
@@ -39,8 +38,7 @@ function computeSourceHash() {
     }
   }
 
-  // Hash platformio.ini (mounted at /firmware/../platformio.ini = /platformio.ini)
-  const iniPath = existsSync(iniFile) ? iniFile : '/platformio.ini';
+  const iniPath = join(FIRMWARE_DIR, 'platformio.ini');
   if (existsSync(iniPath)) {
     hash.update(readFileSync(iniPath));
   }
@@ -66,7 +64,11 @@ async function runBuild(jobId, cacheKey, displayType, language, serverUrl, versi
   const workDir = join(WORK_DIR, jobId);
 
   try {
-    // Copy firmware source to per-job workspace
+    // Clean any stale workDir from a previous run before copying.
+    // If workDir already exists when cp() runs, Node copies /firmware INTO it as a
+    // subdirectory (/work/uuid/firmware/) instead of expanding its contents directly,
+    // causing PlatformIO to fail with "platformio.ini not found".
+    await rm(workDir, { recursive: true, force: true });
     await cp(FIRMWARE_DIR, workDir, { recursive: true });
 
     const displayTypeUpper = displayType.toUpperCase();
@@ -82,10 +84,9 @@ async function runBuild(jobId, cacheKey, displayType, language, serverUrl, versi
     };
 
     const result = await new Promise((resolve, reject) => {
-      // No --project-dir: PlatformIO uses cwd (workDir) to find platformio.ini
       const proc = spawn(
         'platformio',
-        ['run', '-e', 'firmware-custom'],
+        ['run', '--project-dir', workDir, '-e', 'firmware-custom'],
         { env, cwd: workDir }
       );
 
