@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiMulti.h>
@@ -7,7 +7,7 @@
 #include "config.h"
 #include "led.h"
 
-// ── Persistent multi-network storage ─────────────────────────────────────────
+// Persistent multi-network storage
 
 inline void wifiSaveNetwork(const char* ssid, const char* password) {
     Preferences prefs;
@@ -42,7 +42,7 @@ inline void wifiSaveNetwork(const char* ssid, const char* password) {
     Serial.printf("[WIFI] Saved network: %s\n", ssid);
 }
 
-// ── Connect to any known network ─────────────────────────────────────────────
+// Connect to any known network
 
 // Save last-connected credentials for fast reconnect (skips channel scan)
 static void _wifiSaveFastConnect(const String& ssid, int ch, const uint8_t* bssid) {
@@ -59,7 +59,7 @@ inline bool wifiConnect() {
     prefs.begin(PREFS_WIFI, true);
     int count = prefs.getInt("count", 0);
 
-    // ── Fast path: try last-known BSSID+channel first (no scan needed) ──────
+    // Fast path: try last-known BSSID+channel first (no scan needed)
     String fastSsid = prefs.getString("fast_ssid", "");
     int    fastCh   = prefs.getInt("fast_ch", 0);
     uint8_t fastBssid[6] = {};
@@ -102,7 +102,7 @@ inline bool wifiConnect() {
         delay(100);
     }
 
-    // ── Slow path: scan all known networks ──────────────────────────────────
+    // Slow path: scan all known networks
     WiFiMulti wifiMulti;
     prefs.begin(PREFS_WIFI, true);
     for (int i = 0; i < count; i++) {
@@ -134,7 +134,7 @@ inline bool wifiConnect() {
     return true;
 }
 
-// ── First-boot captive portal (blocking) ─────────────────────────────────────
+// First-boot captive portal (blocking)
 // Shows WiFiManager AP, saves credentials, calls onConnected when done.
 
 inline bool wifiOpenCaptivePortal(const char* uuid) {
@@ -164,7 +164,7 @@ inline bool wifiOpenCaptivePortal(const char* uuid) {
     return true;
 }
 
-// ── Sync system time via NTP ──────────────────────────────────────────────────
+// Sync system time via NTP
 
 // Map config timezone name → POSIX TZ string for ESP32
 static const char* _posixTz(const char* tz) {

@@ -1,4 +1,4 @@
-#include <Arduino.h>
+﻿#include <Arduino.h>
 #include <esp_sleep.h>
 #include <driver/gpio.h>
 #include <driver/rtc_io.h>
@@ -14,7 +14,7 @@
 #include "ota.h"
 #include "display.h"
 
-// ── RTC memory (survives deep sleep) ─────────────────────────────────────────
+// RTC memory (survives deep sleep)
 RTC_DATA_ATTR static uint32_t _bootCount      = 0;
 RTC_DATA_ATTR static bool     _lastHadRed     = false;
 RTC_DATA_ATTR static int      _pageIdx        = 0;
@@ -23,7 +23,7 @@ RTC_DATA_ATTR static char     _lastUpdateStr[6] = "--:--";
 RTC_DATA_ATTR static bool     _otaAvailable   = false;
 RTC_DATA_ATTR static int32_t  _fetchedEpoch   = 0;
 RTC_DATA_ATTR static int8_t   _timeTicksLeft  = 0;
-RTC_DATA_ATTR static int8_t   _refreshMinutes = 5;
+RTC_DATA_ATTR static int16_t  _refreshMinutes = 5;
 
 // Set before entering shutdown deep sleep; cleared when a real button press wakes us.
 // Prevents ghost wakeups from cycling through handleShutdown() repeatedly.
@@ -47,7 +47,7 @@ RTC_DATA_ATTR static uint8_t  _wakeStubDebug          = 0;
 static esp_sleep_wakeup_cause_t _wakeupCause = ESP_SLEEP_WAKEUP_UNDEFINED;
 static uint64_t                 _ext1Bits    = 0;
 
-// ── Wake stub ─────────────────────────────────────────────────────────────────
+// Wake stub
 // Runs in RTC IRAM immediately at wakeup — before ROM loads the Flash app.
 // Only ROM functions and direct register writes are permitted here.
 // GPIO26 (BTN_A) = RTC channel 7 → register bit = 14+7 = 21.
@@ -72,13 +72,13 @@ static void RTC_IRAM_ATTR wakeStub() {
     esp_default_wake_deep_sleep();
 }
 
-// ── Forward declarations ──────────────────────────────────────────────────────
+// Forward declarations
 static void goToSleep(int refreshMinutes);
 static void handleShutdown();
 static void handleFirstBoot();
 static void handleNormalBoot(esp_sleep_wakeup_cause_t cause);
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers
 
 static void setupPowerLatch() {
     rtc_gpio_hold_dis(GPIO_NUM_25);
@@ -139,7 +139,7 @@ static void handleShutdown() {
     esp_deep_sleep_start();
 }
 
-// ── First boot flow ───────────────────────────────────────────────────────────
+// First boot flow
 
 static void handleFirstBoot() {
     Serial.println("[BOOT] First boot — starting setup flow.");
@@ -200,14 +200,14 @@ static void handleFirstBoot() {
                               false, _lastHadRed, _lastHadRed);
 
         _fetchedEpoch   = (int32_t)time(nullptr);
-        _refreshMinutes = (int8_t)cfg.refreshMinutes;
+        _refreshMinutes = (int16_t)cfg.refreshMinutes;
         _timeTicksLeft  = (cfg.refreshMinutes > 1) ? cfg.refreshMinutes - 1 : 0;
     }
 
     goToSleep(cfg.refreshMinutes);
 }
 
-// ── Normal boot (timer / button wakeup) ──────────────────────────────────────
+// Normal boot (timer / button wakeup)
 
 static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
     String uuid = transitGetOrCreateUuid();
@@ -222,11 +222,12 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
     }
     strlcpy(cfg.uuid, uuid.c_str(), sizeof(cfg.uuid));
 
-    // ── Time-only intermediate refresh ────────────────────────────────────────
+    // Time-only intermediate refresh
     // On timer wakeups between full data fetches: redraw with updated clock,
     // no WiFi. Skips config refresh, heartbeat, OTA check, and departure fetch.
     if (cause == ESP_SLEEP_WAKEUP_TIMER && _timeTicksLeft > 0) {
         _timeTicksLeft--;
+        _wasGhostWakeup = false; // consume here so the next full-fetch cycle counts correctly
         int n = max(cfg.stationCount, 1);
         int pageForDisplay = ((_pageIdx % n) + n) % n;
         wifiSyncTime(cfg.timezone);
@@ -248,7 +249,7 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
         return;
     }
 
-    // ── Handle button wakeup ──────────────────────────────────────────────────
+    // Handle button wakeup
     if (cause == ESP_SLEEP_WAKEUP_EXT1) {
         uint64_t bits = _ext1Bits;
         Serial.printf("[BTN] EXT1 wakeup, bits=0x%llx\n", bits);
@@ -307,7 +308,7 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
         }
     }
 
-    // ── Auto-shutdown after inactivity ────────────────────────────────────────
+    // Auto-shutdown after inactivity
     if (cfg.shutdownMinutes > 0) {
         int inactiveMinutes = _inactiveBoots * cfg.refreshMinutes;
         if (inactiveMinutes >= cfg.shutdownMinutes) {
@@ -317,7 +318,7 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
         }
     }
 
-    // ── Battery check ─────────────────────────────────────────────────────────
+    // Battery check
     uint8_t bat; bool charging;
     batteryRead(bat, charging);
     Serial.printf("[BAT] %d%%\n", bat);
@@ -326,7 +327,7 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
         delay(3000);
     }
 
-    // ── WiFi connect ──────────────────────────────────────────────────────────
+    // WiFi connect
     if (!wifiConnect()) {
         Serial.println("[WIFI] Offline — showing cached data.");
         int n = max(cfg.stationCount, 1);
@@ -345,10 +346,10 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
         return;
     }
 
-    // ── Time sync ─────────────────────────────────────────────────────────────
+    // Time sync
     wifiSyncTime(cfg.timezone);
 
-    // ── Config refresh / heartbeat / WiFi sync (timer wakeup only) ───────────
+    // Config refresh / heartbeat / WiFi sync (timer wakeup only)
     // Skip on button press — we want fresh departures fast.
     if (cause == ESP_SLEEP_WAKEUP_TIMER) {
         DeviceConfig freshCfg;
@@ -389,7 +390,7 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
         }
     }
 
-    // ── Fetch + display departures ────────────────────────────────────────────
+    // Fetch + display departures
     int n = max(cfg.stationCount, 1);
     int pageForDisplay = ((_pageIdx % n) + n) % n;
     _pageIdx = pageForDisplay;
@@ -405,7 +406,7 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
                           _otaAvailable, _lastHadRed, _lastHadRed);
 
     _fetchedEpoch   = (int32_t)time(nullptr);
-    _refreshMinutes = (int8_t)cfg.refreshMinutes;
+    _refreshMinutes = (int16_t)cfg.refreshMinutes;
     _timeTicksLeft  = (cfg.refreshMinutes > 1) ? cfg.refreshMinutes - 1 : 0;
 
     goToSleep(cfg.refreshMinutes);
@@ -414,7 +415,7 @@ static void handleNormalBoot(esp_sleep_wakeup_cause_t cause) {
 // Increase loopTask stack: DeviceConfig + StationDepartures structs are large (~2KB each)
 SET_LOOP_TASK_STACK_SIZE(24 * 1024);
 
-// ── Arduino entry points ──────────────────────────────────────────────────────
+// Arduino entry points
 
 void setup() {
     // Snapshot wakeup registers FIRST — before anything can clear them.
@@ -425,7 +426,7 @@ void setup() {
     pinMode(2, OUTPUT);
     digitalWrite(2, LOW);
 
-    // ── EXT1 ghost filter ─────────────────────────────────────────────────────
+    // EXT1 ghost filter
     // BTN_A (GPIO26/DAC2): wake stub ran discharge+re-read at ~25ms; result in
     //   _wakeStubBtnAConfirmed. Any tap longer than ~25ms is accepted.
     // BTN_B (GPIO27): floats HIGH during sleep on this board — runtime re-read.
@@ -459,7 +460,7 @@ void setup() {
     setupPowerLatch();
     initButtons();
 
-    // ── BTN_D long-hold detection ─────────────────────────────────────────────
+    // BTN_D long-hold detection
     // If BTN_D woke us, sample the pin for up to 3s. A continuous hold triggers
     // silent token refresh instead of the normal token-display shortcut.
     if (_wakeupCause == ESP_SLEEP_WAKEUP_EXT1 && (_ext1Bits & (1ULL << BTN_D))) {
@@ -469,7 +470,7 @@ void setup() {
         if (_btnDLongHold) Serial.println("[BTN] D long-hold detected.");
     }
 
-    // ── Shutdown-sleep ghost guard ────────────────────────────────────────────
+    // Shutdown-sleep ghost guard
     // In shutdown sleep there's no timer, so any ghost wakeup must go straight
     // back to sleep without touching the display or incrementing counters.
     if (_inShutdownSleep) {
@@ -482,7 +483,7 @@ void setup() {
         _inactiveBoots   = 0;
     }
 
-    // ── Normal ghost guard ────────────────────────────────────────────────────
+    // Normal ghost guard
     // EXT1 fired but all pins resolved LOW — go back to sleep for the remaining
     // interval rather than running a full boot cycle.
     if (_wakeupCause == ESP_SLEEP_WAKEUP_EXT1 && _ext1Bits == 0) {

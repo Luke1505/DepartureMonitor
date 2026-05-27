@@ -131,6 +131,7 @@ inline bool otaApplyUpdate(const char* firmwareUrl, const char* cacheKey,
             size_t w = Update.write(buf, n);
             if (w != (size_t)n) {
                 Serial.printf("[OTA] Write error at %u\n", written);
+                Update.abort();
                 http.end();
                 return false;
             }
@@ -150,8 +151,18 @@ inline bool otaApplyUpdate(const char* firmwareUrl, const char* cacheKey,
     }
     http.end();
 
-    if (!Update.end(true)) {
+    // For unknown-length streams the loop exits when the connection closes, not when
+    // isFinished() is true. Guard here so a truncated download is never flashed.
+    if (unknownLen && !Update.isFinished()) {
+        Serial.println("[OTA] Stream ended before firmware complete — aborting.");
+        Update.abort();
+        ledError();
+        return false;
+    }
+
+    if (!Update.end(unknownLen)) {
         Serial.printf("[OTA] Update error: %d\n", Update.getError());
+        Update.abort();
         ledError();
         return false;
     }

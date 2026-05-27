@@ -1,6 +1,6 @@
-#pragma once
+﻿#pragma once
 
-// ── Firmware ────────────────────────────────────────────────────────────────
+// Firmware
 // Override at build time: -DFIRMWARE_VERSION='"1.2.3"'
 #ifndef FIRMWARE_VERSION
 #  define FIRMWARE_VERSION "dev"
@@ -13,29 +13,29 @@
 #define SERVER_BASE_URL    "https://transit.megaluke.de"
 #endif
 
-// ── E-paper (SPI) ───────────────────────────────────────────────────────────
+// E-paper (SPI)
 #define EINK_CS    5
 #define EINK_DC   17
 #define EINK_RST  16
 #define EINK_BUSY  4
 // MOSI = GPIO23, CLK = GPIO18 (hardware SPI defaults)
 
-// ── Buttons (active LOW, internal pull-up) ──────────────────────────────────
+// Buttons (active LOW, internal pull-up)
 #define BTN_A 26  // Next page / confirm
 #define BTN_B 27  // Previous page / back
 #define BTN_C 14  // Force refresh
 #define BTN_D 15  // RTC GPIO, safe with pull-down (strapping: LOW = normal boot)
 
-// ── RGB Status LED (active HIGH via PWM) ────────────────────────────────────
+// RGB Status LED (active HIGH via PWM)
 #define LED_R 32
 #define LED_G 33
 #define LED_B 13
 
-// ── Power Management ─────────────────────────────────────────────────────────
+// Power Management
 #define PWR_HOLD 25  // HIGH = on, LOW = power cut (P-channel MOSFET gate)
 #define BAT_ADC  34  // ADC1_CH6 — 1:2 divider, read 0-4095
 
-// ── Timing ───────────────────────────────────────────────────────────────────
+// Timing
 #define DEFAULT_REFRESH_MIN    1
 #define DEFAULT_SHUTDOWN_MIN  30
 #define DEFAULT_BAT_WARN_PCT   15
@@ -46,7 +46,7 @@
 #define CONFIG_POLL_INTERVAL_MS 5000
 #define CONFIG_POLL_MAX_TRIES    60  // 5 min
 
-// ── Preferences namespaces ───────────────────────────────────────────────────
+// Preferences namespaces
 #define PREFS_TRANSIT "transit"
 #define PREFS_WIFI    "wifi"
 #define PREFS_CACHE   "cache"

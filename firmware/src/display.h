@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <Arduino.h>
 #include <SPI.h>
 #include <GxEPD2_3C.h>
@@ -9,7 +9,7 @@
 #include "transit_api.h"
 #include "strings.h"
 
-// ── Global display instance ───────────────────────────────────────────────────
+// Global display instance
 #ifdef DISPLAY_BW
 #include <GxEPD2_BW.h>
 static GxEPD2_BW<GxEPD2_213_BN, GxEPD2_213_BN::HEIGHT> display(
@@ -22,7 +22,7 @@ static GxEPD2_3C<GxEPD2_213_Z98c, GxEPD2_213_Z98c::HEIGHT> display(
     GxEPD2_213_Z98c(EINK_CS, EINK_DC, EINK_RST, EINK_BUSY));
 #endif
 
-// ── Layout constants ──────────────────────────────────────────────────────────
+// Layout constants
 static const int DW = 250;          // display width  (after rotation=1)
 static const int DH = 122;          // display height
 
@@ -54,7 +54,7 @@ static const int COL_RIGHT = 248;   // right edge for combined time string
 static const int DIV2_Y   = 105;
 static const int FTR_Y    = 119;    // footer text baseline
 
-// ── Transport type icons (14×14 px, black-on-white) ──────────────────────────
+// Transport type icons (14×14 px, black-on-white)
 // Generated from Lucide SVGs via sharp. drawBitmap renders 1-bits in black.
 // 2 bytes per row (14 bits used, 2 bits zero-padded).
 
@@ -109,7 +109,7 @@ static const uint8_t ICON_TRAM[] PROGMEM = {
   0x00, 0x00
 };
 
-// ── Station icons (12×12 px, black-on-white) ──────────────────────────────────
+// Station icons (12×12 px, black-on-white)
 // Used in header to show station type (house, briefcase, star, etc.)
 
 static const uint8_t SICON_HOUSE[] PROGMEM = {
@@ -288,22 +288,26 @@ static String _toLatin1(const char* src) {
         if (c < 0x80) {
             out += (char)c;
             i++;
-        } else if (c == 0xC3 && src[i + 1]) {
-            uint8_t n = (uint8_t)src[i + 1];
-            i += 2;
-            switch (n) {
-                case 0x84: out += "Ae"; break;  // Ä
-                case 0x96: out += "Oe"; break;  // Ö
-                case 0x9C: out += "Ue"; break;  // Ü
-                case 0x9F: out += "ss"; break;  // ß
-                case 0xA4: out += "ae"; break;  // ä
-                case 0xB6: out += "oe"; break;  // ö
-                case 0xBC: out += "ue"; break;  // ü
-                default:   out += '?'; break;
+        } else if (c == 0xC3) {
+            if (src[i + 1]) {
+                uint8_t n = (uint8_t)src[i + 1];
+                i += 2;
+                switch (n) {
+                    case 0x84: out += "Ae"; break;  // Ä
+                    case 0x96: out += "Oe"; break;  // Ö
+                    case 0x9C: out += "Ue"; break;  // Ü
+                    case 0x9F: out += "ss"; break;  // ß
+                    case 0xA4: out += "ae"; break;  // ä
+                    case 0xB6: out += "oe"; break;  // ö
+                    case 0xBC: out += "ue"; break;  // ü
+                    default:   out += '?'; break;
+                }
+            } else {
+                out += '?'; i++;  // lone 0xC3 at end of string
             }
-        } else if (c >= 0xF0) { out += '?'; i += 4; }
-        else if (c >= 0xE0)   { out += '?'; i += 3; }
-        else                  { out += '?'; i += 2; }
+        } else if (c >= 0xF0) { out += '?'; i++; if (src[i]) i++; if (src[i]) i++; if (src[i]) i++; }
+        else if (c >= 0xE0)   { out += '?'; i++; if (src[i]) i++; if (src[i]) i++; }
+        else                  { out += '?'; i++; if (src[i]) i++; }
     }
     return out;
 }
@@ -337,14 +341,14 @@ static void _printRight(int rightX, int y, const String& text) {
     display.print(text);
 }
 
-// ── Display init ──────────────────────────────────────────────────────────────
+// Display init
 
 inline void displayInit() {
     display.init(115200, true, 2, false);
     display.setRotation(1);
 }
 
-// ── Full-screen helper (runs the page loop once) ──────────────────────────────
+// Full-screen helper (runs the page loop once)
 
 #define DISPLAY_DRAW_BEGIN(fullRefresh)                          \
     if (fullRefresh) display.setFullWindow();                    \
@@ -356,7 +360,7 @@ inline void displayInit() {
 #define DISPLAY_DRAW_END()                                       \
     } while (display.nextPage());
 
-// ── Loading / boot splash ─────────────────────────────────────────────────────
+// Loading / boot splash
 
 inline void displayShowLoading(const char* message = "Loading...") {
     DISPLAY_DRAW_BEGIN(false)
@@ -370,7 +374,7 @@ inline void displayShowLoading(const char* message = "Loading...") {
     DISPLAY_DRAW_END()
 }
 
-// ── Setup / QR screen ────────────────────────────────────────────────────────
+// Setup / QR screen
 // Shows "Scan to configure" + the setup URL (QR rendering is done in browser)
 
 inline void displayShowSetup(const char* uuid) {
@@ -434,7 +438,7 @@ inline void displayShowSetup(const char* uuid) {
     DISPLAY_DRAW_END()
 }
 
-// ── "Waiting for config" screen ───────────────────────────────────────────────
+// "Waiting for config" screen
 
 inline void displayShowWaitingForConfig(const char* uuid) {
     char url[120];
@@ -481,7 +485,7 @@ inline void displayShowWaitingForConfig(const char* uuid) {
     DISPLAY_DRAW_END()
 }
 
-// ── No WiFi signal ────────────────────────────────────────────────────────────
+// No WiFi signal
 
 inline void displayShowNoSignal(const char* lastTime = nullptr) {
     DISPLAY_DRAW_BEGIN(false)
@@ -505,7 +509,7 @@ inline void displayShowNoSignal(const char* lastTime = nullptr) {
     DISPLAY_DRAW_END()
 }
 
-// ── Offline clock (deep-sleep wakeup without WiFi) ───────────────────────────
+// Offline clock (deep-sleep wakeup without WiFi)
 
 inline void displayShowOfflineClock(const char* time24, const char* lastUpdate) {
     DISPLAY_DRAW_BEGIN(false)
@@ -525,7 +529,7 @@ inline void displayShowOfflineClock(const char* time24, const char* lastUpdate) 
     DISPLAY_DRAW_END()
 }
 
-// ── Low-battery warning ───────────────────────────────────────────────────────
+// Low-battery warning
 
 inline void displayShowLowBattery(uint8_t pct) {
     DISPLAY_DRAW_BEGIN(true)
@@ -545,7 +549,7 @@ inline void displayShowLowBattery(uint8_t pct) {
     DISPLAY_DRAW_END()
 }
 
-// ── Shutdown screen ───────────────────────────────────────────────────────────
+// Shutdown screen
 
 inline void displayShowShutdown() {
     DISPLAY_DRAW_BEGIN(true)
@@ -575,7 +579,7 @@ inline void displayShowShutdown() {
     DISPLAY_DRAW_END()
 }
 
-// ── OTA progress ─────────────────────────────────────────────────────────────
+// OTA progress
 
 inline void displayShowOtaProgress(const char* version, size_t done, size_t total) {
     DISPLAY_DRAW_BEGIN(true)
@@ -604,7 +608,7 @@ inline void displayShowOtaProgress(const char* version, size_t done, size_t tota
     DISPLAY_DRAW_END()
 }
 
-// ── Access code screen ────────────────────────────────────────────────────────
+// Access code screen
 // Shows the device access token as a scannable QR + typed code "XXXX-XXXX"
 
 inline void displayShowAccessCode(const char* uuid, const char* token) {
@@ -670,7 +674,7 @@ inline void displayShowAccessCode(const char* uuid, const char* token) {
     DISPLAY_DRAW_END()
 }
 
-// ── Main departures screen ────────────────────────────────────────────────────
+// Main departures screen
 
 inline void displayShowDepartures(const StationDepartures& data,
                                    uint8_t batPct, bool charging,
@@ -692,7 +696,7 @@ inline void displayShowDepartures(const StationDepartures& data,
     do {
         display.fillScreen(GxEPD_WHITE);
 
-        // ── Header ────────────────────────────────────────────────────────────
+        // Header
         // Station icon (12×12) left-aligned, name beside it
         _drawStationIcon(HDR_SICON_X, HDR_BASE - 11, data.icon[0] ? data.icon : "house");
 
@@ -712,11 +716,12 @@ inline void displayShowDepartures(const StationDepartures& data,
 
         // Battery icon (far right)
         _drawBattery(DW - 20, BAT_Y, batPct, charging);
+        if (batPct <= 15) outHadRed = true;
 
         // Single divider below header
         display.drawFastHLine(0, DIV1_Y, DW, GxEPD_BLACK);
 
-        // ── Departure rows ────────────────────────────────────────────────────
+        // Departure rows
         int shown = min(data.count, ROW_CNT);
 
         // Draw subtle row separators before rendering text (between rows)
@@ -732,7 +737,7 @@ inline void displayShowDepartures(const StationDepartures& data,
             // Type badge (14×14, vertically centred in row)
             _drawTypeBadge(COL_BADGE, rowY + 3, dep.type);
 
-            // ── Build time label first so we know how wide it is ─────────────
+            // Build time label first so we know how wide it is
             String timeLabel;
             bool timeRed = false;
             if (dep.isCancelled) {
@@ -793,7 +798,7 @@ inline void displayShowDepartures(const StationDepartures& data,
             display.print(STRINGS.noDepartures);
         }
 
-        // ── Footer ────────────────────────────────────────────────────────────
+        // Footer
         display.drawFastHLine(0, DIV2_Y, DW, GxEPD_BLACK);
         display.setFont(&FreeSans9pt7b);
         display.setTextColor(GxEPD_BLACK);

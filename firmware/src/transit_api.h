@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
@@ -8,7 +8,7 @@
 #include "config.h"
 #include "wifi_manager.h"
 
-// ── Data structures ───────────────────────────────────────────────────────────
+// Data structures
 
 struct Departure {
     char line[12];
@@ -51,7 +51,7 @@ struct DeviceConfig {
     char otaUrl[128];
 };
 
-// ── HTTP helper ───────────────────────────────────────────────────────────────
+// HTTP helper
 
 static String _apiGet(const String& path) {
     String url = String(SERVER_BASE_URL) + path;
@@ -98,7 +98,7 @@ static bool _apiPost(const String& path, const String& json) {
     return (code >= 200 && code < 300);
 }
 
-// ── UUID management ───────────────────────────────────────────────────────────
+// UUID management
 
 inline String transitGetOrCreateUuid() {
     Preferences prefs;
@@ -128,7 +128,7 @@ inline String transitGetOrCreateUuid() {
     return uuid;
 }
 
-// ── Device registration & config polling ─────────────────────────────────────
+// Device registration & config polling
 
 inline bool transitRegisterDevice(const String& uuid) {
     JsonDocument doc;
@@ -178,6 +178,8 @@ inline String transitGetAccessToken() {
 
 // Authenticated GET — sends x-device-token header.
 // On 401, re-registers the device (recovering a reset token) and retries once.
+// At most one re-registration per boot (guards against multiple callers each triggering one).
+static bool _reregisteredThisBoot = false;
 static String _apiGetAuth(const String& uuid, const String& path, bool retry = true) {
     String url = String(SERVER_BASE_URL) + path;
     HTTPClient http;
@@ -200,9 +202,10 @@ static String _apiGetAuth(const String& uuid, const String& path, bool retry = t
     String body;
     if (code == 200) {
         body = http.getString();
-    } else if (code == 401 && retry && uuid.length() > 0) {
+    } else if (code == 401 && retry && uuid.length() > 0 && !_reregisteredThisBoot) {
         http.end();
         Serial.println("[AUTH] 401 on GET — re-registering and retrying.");
+        _reregisteredThisBoot = true;
         if (transitRegisterDevice(uuid)) {
             return _apiGetAuth(uuid, path, false);
         }
@@ -258,6 +261,7 @@ inline String transitSendHeartbeat(const String& uuid, uint8_t batPct) {
         }
     } else if (code == 401) {
         Serial.println("[AUTH] 401 on heartbeat — re-registering (token takes effect next boot).");
+        _reregisteredThisBoot = true;
         transitRegisterDevice(uuid);
     } else {
         Serial.printf("[API] Heartbeat -> %d\n", code);
@@ -278,8 +282,8 @@ inline void transitSyncWifiNetworks(const String& uuid) {
     for (JsonObject net : arr) {
         const char* ssid = net["ssid"];
         const char* pass = net["password"];
-        if (ssid && pass && strlen(ssid) > 0 && strlen(pass) > 0) {
-            wifiSaveNetwork(ssid, pass);
+        if (ssid && strlen(ssid) > 0) {
+            wifiSaveNetwork(ssid, pass ? pass : "");
         }
     }
     Serial.printf("[WIFI] Synced %d network(s) from server.\n", arr.size());
@@ -309,8 +313,14 @@ static bool _parseConfig(const String& json, DeviceConfig& cfg) {
         strlcpy(st.filterTypes,  s["filterTypes"] | "", sizeof(st.filterTypes));
         // timeWindows: [{from:"HH:MM", to:"HH:MM"}] — convert to minutes-since-midnight
         auto hhmm = [](const char* t) -> int {
-            if (!t || strlen(t) < 5) return 0;
-            return ((t[0]-'0')*10 + (t[1]-'0')) * 60 + ((t[3]-'0')*10 + (t[4]-'0'));
+            if (!t || !t[0]) return 0;
+            const char* colon = strchr(t, ':');
+            if (!colon) return 0;
+            int h = 0;
+            for (const char* p = t; p < colon; p++) h = h * 10 + (*p - '0');
+            const char* mp = colon + 1;
+            int m = (mp[0] && mp[1]) ? (mp[0]-'0')*10 + (mp[1]-'0') : 0;
+            return h * 60 + m;
         };
         JsonObject tw = s["timeWindows"][0].as<JsonObject>();
         if (!tw.isNull()) {
@@ -384,6 +394,7 @@ inline bool transitLoadConfig(const String& uuid, DeviceConfig& cfg) {
     cfg.refreshMinutes  = prefs.getInt("refresh_min",  DEFAULT_REFRESH_MIN);
     cfg.shutdownMinutes = prefs.getInt("shutdown_min", DEFAULT_SHUTDOWN_MIN);
     cfg.batWarnPct      = prefs.getInt("bat_warn_pct", DEFAULT_BAT_WARN_PCT);
+    if (cnt > 6) cnt = 6;
     cfg.stationCount    = cnt;
     strlcpy(cfg.timezone, prefs.getString("timezone", "Europe/Berlin").c_str(), sizeof(cfg.timezone));
     strlcpy(cfg.otaUrl,   prefs.getString("ota_url",  "").c_str(), sizeof(cfg.otaUrl));
@@ -400,13 +411,13 @@ inline bool transitLoadConfig(const String& uuid, DeviceConfig& cfg) {
         strlcpy(s.api,         prefs.getString((p+"api").c_str(),      "vrr").c_str(), sizeof(s.api));
         strlcpy(s.filterTypes, prefs.getString((p+"types").c_str(),    "").c_str(), sizeof(s.filterTypes));
         s.timeWindowStart = prefs.getInt((p+"twS").c_str(), 0);
-        s.timeWindowEnd   = prefs.getInt((p+"twE").c_str(), 120);
+        s.timeWindowEnd   = prefs.getInt((p+"twE").c_str(), 1440);
     }
     prefs.end();
     return true;
 }
 
-// ── Departures ────────────────────────────────────────────────────────────────
+// Departures
 
 static char _typeFromLine(const char* line) {
     if (!line[0])                                          return 'B';
@@ -455,7 +466,14 @@ inline bool transitFetchDepartures(const String& uuid, const DeviceConfig::Stati
       snprintf(ckey, sizeof(ckey), "%08lx", (unsigned long)h); }
     Preferences cache;
     cache.begin(PREFS_CACHE, false);
-    cache.putString(ckey, body.c_str());
+    // NVS string values are limited to ~4000 bytes; skip caching oversized responses
+    if (body.length() < 3500) {
+        if (!cache.putString(ckey, body.c_str())) {
+            Serial.printf("[Cache] NVS write failed for key %s (%u bytes)\n", ckey, body.length());
+        }
+    } else {
+        Serial.printf("[Cache] Response too large to cache (%u bytes) — skipping\n", body.length());
+    }
     cache.end();
 
     return true;
