@@ -17,6 +17,20 @@ function SettingsRow({ label, children }) {
   )
 }
 
+function sanitizeConfigForExport(cfg) {
+  if (!cfg) return cfg
+  const strip = ({ clientSecret, apiKey, authHeader, ...rest }) => rest
+  const apis = cfg.apis ? {
+    ...Object.fromEntries(
+      Object.entries(cfg.apis)
+        .filter(([k]) => k !== 'custom')
+        .map(([k, v]) => [k, strip(v || {})])
+    ),
+    custom: (cfg.apis.custom || []).map(strip),
+  } : cfg.apis
+  return { ...cfg, apis }
+}
+
 export default function SettingsTab({ config, device, deviceId, onSave }) {
   const navigate = useNavigate()
   const [settings, setSettings] = useState({
@@ -34,12 +48,31 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
   const settingsInitialized = useRef(false)
   const deviceSettingsInitialized = useRef(false)
   const settingsTimer = useRef(null)
+  const settingsPending = useRef(false)
   const deviceSettingsTimer = useRef(null)
+  const deviceSettingsPending = useRef(false)
   const onSaveRef = useRef(onSave)
   useEffect(() => { onSaveRef.current = onSave }, [onSave])
 
-  // Re-sync when config prop changes (e.g. after a save round-trip)
+  // Auto-save config settings
   useEffect(() => {
+    if (!settingsInitialized.current) {
+      settingsInitialized.current = true
+      return
+    }
+    clearTimeout(settingsTimer.current)
+    settingsTimer.current = setTimeout(async () => {
+      settingsTimer.current = null
+      settingsPending.current = true
+      try { await onSaveRef.current(settings) } finally { settingsPending.current = false }
+    }, 1500)
+    return () => clearTimeout(settingsTimer.current)
+  }, [settings])
+
+  // Re-sync when config prop changes (e.g. after a save round-trip).
+  // Skip if the user has a pending edit or in-flight save to avoid discarding unsaved changes.
+  useEffect(() => {
+    if (settingsTimer.current || settingsPending.current) return
     settingsInitialized.current = false
     setSettings({
       refresh_minutes: config.refresh_minutes ?? 1,
@@ -50,26 +83,6 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
     })
   }, [config])
 
-  // Re-sync device settings when device prop changes (e.g. after a PATCH round-trip)
-  useEffect(() => {
-    deviceSettingsInitialized.current = false
-    setDeviceSettings({
-      language: device?.language ?? 'de',
-      display_type: device?.display_type ?? 'bwr',
-    })
-  }, [device])
-
-  // Auto-save config settings
-  useEffect(() => {
-    if (!settingsInitialized.current) {
-      settingsInitialized.current = true
-      return
-    }
-    clearTimeout(settingsTimer.current)
-    settingsTimer.current = setTimeout(() => onSaveRef.current(settings), 1500)
-    return () => clearTimeout(settingsTimer.current)
-  }, [settings])
-
   // Auto-save device settings
   useEffect(() => {
     if (!deviceSettingsInitialized.current) {
@@ -77,14 +90,34 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
       return
     }
     clearTimeout(deviceSettingsTimer.current)
-    deviceSettingsTimer.current = setTimeout(() => {
-      saveDeviceSettings(deviceId, deviceSettings).catch((err) => {
+    deviceSettingsTimer.current = setTimeout(async () => {
+      deviceSettingsTimer.current = null
+      deviceSettingsPending.current = true
+      try {
+        await saveDeviceSettings(deviceId, deviceSettings)
+      } catch (err) {
         console.error('Device settings auto-save failed:', err)
         showToast('Einstellungen konnten nicht gespeichert werden')
-      })
+      } finally {
+        deviceSettingsPending.current = false
+      }
     }, 1500)
     return () => clearTimeout(deviceSettingsTimer.current)
   }, [deviceSettings, deviceId])
+
+  // Re-sync device settings when device prop changes (e.g. after a PATCH round-trip).
+  // Skip if the user has a pending edit or in-flight save to avoid discarding unsaved changes.
+  useEffect(() => {
+    if (deviceSettingsTimer.current || deviceSettingsPending.current) return
+    deviceSettingsInitialized.current = false
+    setDeviceSettings({
+      language: device?.language ?? 'de',
+      display_type: device?.display_type ?? 'bwr',
+    })
+  }, [device])
+
+  const fwProgressInterval = useRef(null)
+  useEffect(() => () => clearInterval(fwProgressInterval.current), [])
 
   const [firmwareInfo, setFirmwareInfo] = useState(null)
   const [checkingFw, setCheckingFw] = useState(false)
@@ -119,10 +152,10 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
       setFirmwareInfo(fw)
       // Simulate progress animation
       let p = 0
-      const interval = setInterval(() => {
+      fwProgressInterval.current = setInterval(() => {
         p += 10
         setFwProgress(p)
-        if (p >= 100) clearInterval(interval)
+        if (p >= 100) { clearInterval(fwProgressInterval.current); fwProgressInterval.current = null }
       }, 80)
     } catch (e) {
       setFirmwareInfo({ error: 'Kein Update verfügbar' })
@@ -335,7 +368,7 @@ export default function SettingsTab({ config, device, deviceId, onSave }) {
           <div className="mt-3 flex flex-col items-center gap-2">
             <div className="bg-white p-3 rounded-xl">
               <QRCodeSVG
-                value={JSON.stringify(config)}
+                value={JSON.stringify(sanitizeConfigForExport(config))}
                 size={180}
                 level="M"
               />

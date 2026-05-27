@@ -2,8 +2,6 @@
 
 A wearable / keychain-sized e-ink display showing real-time public transit departures, powered by an ESP32 and the [transit.megaluke.de](https://transit.megaluke.de) web portal.
 
-> 📷 _Photo / render placeholder — add an image of the assembled device here_
-
 **Live portal:** [transit.megaluke.de](https://transit.megaluke.de)
 
 ---

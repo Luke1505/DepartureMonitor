@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { registerRateLimiter, deviceRateLimiter, tokenRequestDeviceLimiter, tokenRequestIpLimiter } from '../middleware/rateLimiter.js';
 import { generateToken } from '../middleware/deviceAuth.js';
 import { requireAdmin } from '../middleware/adminAuth.js';
+import { encrypt, decrypt } from '../lib/crypto.js';
 
 export default function deviceRouter(pool, requireDeviceToken) {
   const router = Router();
@@ -51,8 +52,7 @@ export default function deviceRouter(pool, requireDeviceToken) {
         `INSERT INTO devices (id, name, firmware, is_setup, last_seen, access_token)
          VALUES ($1, $2, $3, TRUE, NOW(), $4)
          ON CONFLICT (id) DO UPDATE
-           SET name = COALESCE($2, devices.name),
-               firmware = COALESCE($3, devices.firmware),
+           SET firmware = COALESCE($3, devices.firmware),
                is_setup = TRUE,
                last_seen = NOW(),
                access_token = COALESCE(devices.access_token, $4)
@@ -132,10 +132,16 @@ export default function deviceRouter(pool, requireDeviceToken) {
          SET pending_show_token = TRUE,
              display_token = $2,
              display_token_expires = NOW() + INTERVAL '90 seconds'
-         WHERE id = $1`,
+         WHERE id = $1
+           AND (display_token IS NULL OR display_token_expires IS NULL OR display_token_expires < NOW())`,
         [id, displayToken]
       );
-      if (!rowCount) return res.status(404).json({ error: 'Device not found' });
+      if (!rowCount) {
+        // Either device not found or an active pairing is already in progress
+        const { rows } = await pool.query('SELECT id FROM devices WHERE id = $1', [id]);
+        if (!rows.length) return res.status(404).json({ error: 'Device not found' });
+        return res.status(409).json({ error: 'Pairing already in progress' });
+      }
       res.json({ status: 'ok' });
     } catch (err) {
       console.error(err);
@@ -223,7 +229,7 @@ export default function deviceRouter(pool, requireDeviceToken) {
         'SELECT id, ssid, password, created_at FROM wifi_networks WHERE device_id = $1 ORDER BY created_at',
         [id]
       );
-      res.json(rows);
+      res.json(rows.map((r) => ({ ...r, password: decrypt(r.password) })));
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: 'Internal server error' });
@@ -233,14 +239,14 @@ export default function deviceRouter(pool, requireDeviceToken) {
   // POST /api/device/:id/wifi  (requires device token)
   router.post('/:id/wifi', requireDeviceToken, deviceRateLimiter, async (req, res) => {
     const { id } = req.params;
-    const { ssid, password } = req.body;
+    const { ssid, password = '' } = req.body;
 
-    if (!ssid || !password)
-      return res.status(400).json({ error: 'ssid and password required' });
+    if (!ssid)
+      return res.status(400).json({ error: 'ssid required' });
     if (typeof ssid !== 'string' || ssid.trim().length === 0 || ssid.length > 32)
       return res.status(400).json({ error: 'SSID muss zwischen 1 und 32 Zeichen lang sein' });
-    if (typeof password !== 'string' || password.length < 1 || password.length > 64)
-      return res.status(400).json({ error: 'Passwort muss zwischen 1 und 64 Zeichen lang sein' });
+    if (typeof password !== 'string' || password.length > 64)
+      return res.status(400).json({ error: 'Passwort darf max. 64 Zeichen lang sein' });
 
     try {
       const { rows } = await pool.query(
@@ -248,7 +254,7 @@ export default function deviceRouter(pool, requireDeviceToken) {
          VALUES ($1, $2, $3)
          ON CONFLICT (device_id, ssid) DO UPDATE SET password = $3
          RETURNING id, ssid, created_at`,
-        [id, ssid, password]
+        [id, ssid, encrypt(password)]
       );
       res.json(rows[0]);
     } catch (err) {

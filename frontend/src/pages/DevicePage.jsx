@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { KeyRound, RefreshCw, MonitorSmartphone, CheckCircle } from 'lucide-react'
-import { getDevice, getConfig, saveConfig, requestTokenDisplay, getDeviceToken, storeDeviceToken, addKnownDevice } from '../lib/api.js'
+import { getDevice, getConfig, saveConfig, requestTokenDisplay, getDeviceToken, storeDeviceToken, clearDeviceToken, addKnownDevice } from '../lib/api.js'
 import { showToast } from '../lib/toast.js'
 import DeviceHeader from '../components/DeviceHeader.jsx'
 import StationsTab from '../components/StationsTab.jsx'
@@ -79,7 +79,7 @@ function UnlockScreen({ deviceId, onUnlocked }) {
       const dev = await getDevice(deviceId)
       onUnlocked(dev)
     } catch (err) {
-      storeDeviceToken(deviceId, prevToken)  // rollback on failure
+      prevToken ? storeDeviceToken(deviceId, prevToken) : clearDeviceToken(deviceId)
       if (err.status === 401) {
         setError('Falscher Code. Bitte prüfe die Eingabe.')
       } else {
@@ -184,7 +184,7 @@ export default function DevicePage() {
   }, [id, searchParams, navigate])
 
   const load = useCallback(async () => {
-    if (new URLSearchParams(window.location.search).get('token')) return // wait for redirect
+    if (searchParams.get('token')) return // wait for redirect
     setLoading(true)
     setError(null)
     try {
@@ -201,7 +201,7 @@ export default function DevicePage() {
     } finally {
       setLoading(false)
     }
-  }, [id])
+  }, [id, searchParams])
 
   useEffect(() => { load() }, [load])
 
@@ -210,10 +210,14 @@ export default function DevicePage() {
   }, [device?.name])
 
   async function handleSave(newConfig) {
-    const merged = { ...config, ...newConfig }
+    let merged
+    setConfig((prev) => {
+      merged = { ...prev, ...newConfig }
+      return merged
+    })
+    if (!merged) return
     try {
       await saveConfig(id, merged)
-      setConfig(merged)
       setSavedFlash(true)
       setTimeout(() => setSavedFlash(false), 2000)
     } catch (err) {
@@ -279,7 +283,7 @@ export default function DevicePage() {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-4">
-        <div key={activeTab} className="animate-fade-in-up">
+        <div className="animate-fade-in-up">
           {activeTab === 'stations' && (
             <StationsTab config={config} deviceId={id} onSave={handleSave} />
           )}

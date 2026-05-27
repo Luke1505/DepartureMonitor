@@ -37,10 +37,16 @@ export default function DeviceHeader({ device, deviceId, flash, onDeviceUpdate }
   const inputRef = useRef(null)
 
   useEffect(() => {
+    if (!editing) setNameValue(device?.name || '')
+  }, [device?.name, editing])
+
+  useEffect(() => {
     if (!device?.firmware) return
+    let mounted = true
     getFirmwareLatest()
-      .then(setLatestFirmware)
-      .catch(() => {}) // silently ignore if no firmware endpoint
+      .then((fw) => { if (mounted) setLatestFirmware(fw) })
+      .catch(() => {})
+    return () => { mounted = false }
   }, [device?.firmware])
 
   async function saveName() {
@@ -50,12 +56,13 @@ export default function DeviceHeader({ device, deviceId, flash, onDeviceUpdate }
     }
     try {
       const updated = await saveDeviceSettings(deviceId, { name: nameValue.trim() })
-      onDeviceUpdate(updated)
+      onDeviceUpdate((prev) => ({ ...prev, ...updated }))
+      setEditing(false)
     } catch (e) {
       console.error(e)
       showToast('Name konnte nicht gespeichert werden', 'error')
+      // keep editing open so user can retry
     }
-    setEditing(false)
   }
 
   function startEdit() {

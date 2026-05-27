@@ -2,7 +2,7 @@
 
 // --- Device token storage (per device, in localStorage) ---
 export const getDeviceToken = (id) => localStorage.getItem(`dtok_${id}`) || ''
-export const storeDeviceToken = (id, token) => localStorage.setItem(`dtok_${id}`, token.toUpperCase())
+export const storeDeviceToken = (id, token) => { if (token != null) localStorage.setItem(`dtok_${id}`, token.toUpperCase()) }
 export const clearDeviceToken = (id) => localStorage.removeItem(`dtok_${id}`)
 
 // --- Known devices (devices this browser has claimed) ---

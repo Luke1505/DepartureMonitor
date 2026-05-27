@@ -5,6 +5,7 @@ import { Readable } from 'stream';
 import multer from 'multer';
 import { triggerBuild, getBuildStatus } from '../services/buildWorker.js';
 import { requireAdmin } from '../middleware/adminAuth.js';
+import { buildRateLimiter } from '../middleware/rateLimiter.js';
 
 const OTA_DIR = process.env.OTA_DIR || './firmware';
 
@@ -15,7 +16,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 export default function firmwareRouter(pool, requireDeviceToken) {
   const router = Router();
 
-  // GET /api/firmware/ota-download/:filename  — proxies binary from build-worker to device
+  // GET /api/firmware/ota-download/:filename?deviceId=<id>  — proxies binary from build-worker to device
   router.get('/ota-download/:filename', requireDeviceToken, async (req, res) => {
     const { filename } = req.params;
     if (!filename.endsWith('.bin') || filename.includes('..') || filename.includes('/')) {
@@ -34,7 +35,9 @@ export default function firmwareRouter(pool, requireDeviceToken) {
       if (!upstream.ok) return res.status(404).json({ error: 'Binary not available' });
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.setHeader('Content-Type', 'application/octet-stream');
-      Readable.fromWeb(upstream.body).pipe(res);
+      Readable.fromWeb(upstream.body)
+        .on('error', (err) => { console.error('[OTA] Stream error:', err); res.destroy(); })
+        .pipe(res);
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: 'Internal server error' });
@@ -58,7 +61,7 @@ export default function firmwareRouter(pool, requireDeviceToken) {
 
       if (status === 'ready') {
         const version = (cache_key ? cache_key.split('-').slice(1, -2).join('-') : '') || cache_key || 'dev';
-        const url = `/api/firmware/ota-download/${cache_key}-firmware.bin`;
+        const url = `/api/firmware/ota-download/${cache_key}-firmware.bin?deviceId=${deviceId}`;
         return res.json({ available: true, url, cache_key, version });
       }
       if (status === 'building') {
@@ -71,8 +74,8 @@ export default function firmwareRouter(pool, requireDeviceToken) {
     }
   });
 
-  // GET /api/firmware/ota-status/:job_id
-  router.get('/ota-status/:job_id', requireDeviceToken, async (req, res) => {
+  // GET /api/firmware/ota-status/:job_id  — no auth required; job_id is an unguessable UUID
+  router.get('/ota-status/:job_id', async (req, res) => {
     const { job_id } = req.params;
     try {
       const result = await getBuildStatus(job_id);
@@ -212,7 +215,12 @@ export default function firmwareRouter(pool, requireDeviceToken) {
       );
       if (!rows.length) return res.status(404).json({ error: 'Version not found' });
 
-      const filePath = join(OTA_DIR, version, rows[0].filename || 'firmware.bin');
+      const allowedFilenames = ['firmware.bin', 'bootloader.bin', 'partitions.bin'];
+      const filename = rows[0].filename || 'firmware.bin';
+      if (!allowedFilenames.includes(filename)) {
+        return res.status(404).json({ error: 'Firmware file not found on server' });
+      }
+      const filePath = join(OTA_DIR, version, filename);
       if (!existsSync(filePath)) {
         return res.status(404).json({ error: 'Firmware file not found on server' });
       }
@@ -227,7 +235,7 @@ export default function firmwareRouter(pool, requireDeviceToken) {
   });
 
   // POST /api/firmware/flash-build  — trigger a build for USB flashing
-  router.post('/flash-build', async (req, res) => {
+  router.post('/flash-build', buildRateLimiter, async (req, res) => {
     const { deviceId } = req.body || {};
     let displayType = 'bwr';
     let language = 'de';
@@ -250,7 +258,7 @@ export default function firmwareRouter(pool, requireDeviceToken) {
       const version = result.cache_key
         ? result.cache_key.split('-').slice(1, -2).join('-')
         : 'dev';
-      res.json({ ...result, version, display_type: displayType, language });
+      res.json({ ...result, version });
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: 'Build worker unavailable' });
@@ -316,7 +324,9 @@ export default function firmwareRouter(pool, requireDeviceToken) {
       if (!upstream.ok) return res.status(404).json({ error: 'Binary not available' });
       res.setHeader('Content-Disposition', `attachment; filename="${part}"`);
       res.setHeader('Content-Type', 'application/octet-stream');
-      Readable.fromWeb(upstream.body).pipe(res);
+      Readable.fromWeb(upstream.body)
+        .on('error', (err) => { console.error('[OTA] Stream error:', err); res.destroy(); })
+        .pipe(res);
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: 'Internal server error' });
@@ -337,27 +347,25 @@ export default function firmwareRouter(pool, requireDeviceToken) {
 
       if (!version) return res.status(400).json({ error: 'version required' });
       if (!req.files?.firmware?.[0]) return res.status(400).json({ error: 'firmware file required' });
+      if (!['stable', 'beta', 'dev'].includes(channel)) {
+        return res.status(400).json({ error: 'Invalid channel. Allowed: stable, beta, dev' });
+      }
       // Validate version to prevent path traversal
       if (!/^[a-zA-Z0-9._-]+$/.test(version) || version.includes('..')) {
         return res.status(400).json({ error: 'Invalid version' });
       }
 
+      // Commit DB record first — DB is the source of truth.
+      // Only write files to disk after a successful DB commit.
+      let dbRow;
+      const client = await pool.connect();
       try {
-        // Write uploaded buffers to disk now that req.body is fully parsed
-        const dir = join(OTA_DIR, version);
-        mkdirSync(dir, { recursive: true });
-        for (const field of ['bootloader', 'partitions', 'firmware']) {
-          const file = req.files[field]?.[0];
-          if (file) writeFileSync(join(dir, `${field}.bin`), file.buffer);
-        }
-
-        // Unset previous latest for this channel before marking new one
-        await pool.query(
+        await client.query('BEGIN');
+        await client.query(
           'UPDATE firmware_versions SET is_latest = FALSE WHERE channel = $1',
           [channel]
         );
-
-        const { rows } = await pool.query(
+        const { rows } = await client.query(
           `INSERT INTO firmware_versions (version, filename, changelog, is_latest, channel)
            VALUES ($1, $2, $3, $4, $5)
            ON CONFLICT (version) DO UPDATE
@@ -365,10 +373,31 @@ export default function firmwareRouter(pool, requireDeviceToken) {
            RETURNING *`,
           [version, 'firmware.bin', changelog || null, true, channel]
         );
+        await client.query('COMMIT');
+        dbRow = rows[0];
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error(err);
+        return res.status(500).json({ error: 'Internal server error' });
+      } finally {
+        client.release();
+      }
 
-        res.json({ status: 'uploaded', firmware: rows[0] });
+      try {
+        const dir = join(OTA_DIR, version);
+        mkdirSync(dir, { recursive: true });
+        for (const field of ['bootloader', 'partitions', 'firmware']) {
+          const file = req.files[field]?.[0];
+          if (file) writeFileSync(join(dir, `${field}.bin`), file.buffer);
+        }
+        res.json({ status: 'uploaded', firmware: dbRow });
       } catch (err) {
         console.error(err);
+        // DB is already committed — revert is_latest so the un-writable version is not served
+        await pool.query(
+          'UPDATE firmware_versions SET is_latest = FALSE WHERE version = $1',
+          [version]
+        ).catch(console.error);
         res.status(500).json({ error: 'Internal server error' });
       }
     }

@@ -85,6 +85,7 @@ export default function ApisTab({ config, onSave }) {
 
   const initialized = useRef(false)
   const saveTimer = useRef(null)
+  const savePending = useRef(false)
   const onSaveRef = useRef(onSave)
   useEffect(() => { onSaveRef.current = onSave }, [onSave])
 
@@ -94,12 +95,31 @@ export default function ApisTab({ config, onSave }) {
       return
     }
     clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => {
+    saveTimer.current = setTimeout(async () => {
+      saveTimer.current = null
+      savePending.current = true
       const clean = { ...apis, custom: (apis.custom || []).map(({ _key, ...rest }) => rest) }
-      onSaveRef.current({ apis: clean })
+      try { await onSaveRef.current({ apis: clean }) } finally { savePending.current = false }
     }, 1500)
     return () => clearTimeout(saveTimer.current)
   }, [apis])
+
+  // Re-sync when config prop changes (e.g. after save round-trip or parent reload).
+  // Skip if the user has a pending edit or in-flight save to avoid discarding unsaved changes.
+  useEffect(() => {
+    if (saveTimer.current || savePending.current) return
+    initialized.current = false
+    const src = config.apis || {}
+    setApis({
+      ...DEFAULT_APIS,
+      ...src,
+      vrr: { ...DEFAULT_APIS.vrr, ...(src.vrr || {}) },
+      mvv: { ...DEFAULT_APIS.mvv, ...(src.mvv || {}) },
+      db: { ...DEFAULT_APIS.db, ...(src.db || {}) },
+      hvv: { ...DEFAULT_APIS.hvv, ...(src.hvv || {}) },
+      custom: (src.custom || []).map((c) => ({ ...c, _key: c._key || crypto.randomUUID() })),
+    })
+  }, [config])
 
   function updateApi(key, updates) {
     setApis((prev) => ({ ...prev, [key]: { ...prev[key], ...updates } }))

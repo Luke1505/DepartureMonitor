@@ -26,7 +26,9 @@ const allowedOrigins = (process.env.CORS_ORIGINS || 'https://transit.megaluke.de
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (device API calls, curl, etc.)
+    // Reject 'null' string origin — sent by sandboxed iframes; not a legitimate browser origin
     if (!origin) return callback(null, true);
+    if (origin === 'null') return callback(new Error('Not allowed by CORS'));
     if (process.env.NODE_ENV !== 'production' || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }

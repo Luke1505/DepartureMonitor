@@ -37,6 +37,16 @@ export const tokenRequestDeviceLimiter = rateLimit({
   message: { error: 'Too many token requests for this device, please wait.' },
 });
 
+// Build trigger: 5 builds per 10 minutes per IP (flash-build is unauthenticated)
+export const buildRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => req.ip,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many build requests, please wait.' },
+});
+
 // Per-IP: 10 token requests per 5 minutes across all devices
 export const tokenRequestIpLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,

@@ -124,7 +124,7 @@ function DeparturePreview({ stopId, api, deviceId }) {
         const TypeIcon = TYPE_ICONS[d.type] || Bus
         return (
           <div
-            key={i}
+            key={`${d.line}-${d.destination}-${d.countdown}-${i}`}
             className="flex items-center gap-2 px-3 py-1.5 border-b border-[#eeeeee] dark:border-[#2e2e2e] last:border-0"
           >
             <TypeIcon size={12} className="text-[#555] dark:text-[#888] flex-shrink-0" />
@@ -339,7 +339,7 @@ function StationEditForm({ station, onChange, onDelete, deviceId }) {
         <label className={labelCls}>Auto-Station Zeitfenster</label>
         <div className="space-y-2">
           {station.timeWindows.map((w, i) => (
-            <div key={i} className="flex items-center gap-2">
+            <div key={`${w.from}-${w.to}-${i}`} className="flex items-center gap-2">
               <input
                 type="time"
                 className={`${inputCls} flex-1`}
@@ -491,15 +491,6 @@ export default function StationsTab({ config, deviceId, onSave }) {
   const onSaveRef = useRef(onSave)
   useEffect(() => { onSaveRef.current = onSave }, [onSave])
 
-  // Re-sync when config prop changes (e.g. after save round-trip or parent reload)
-  useEffect(() => {
-    initialized.current = false
-    setStations(
-      (config.stations || []).map((s, i) => ({ ...s, _id: s._id || `s-${i}-${Date.now()}` }))
-    )
-    setExpandedId(null)
-  }, [config])
-
   // Auto-save when stations change (skips initial render)
   useEffect(() => {
     if (!initialized.current) {
@@ -508,11 +499,26 @@ export default function StationsTab({ config, deviceId, onSave }) {
     }
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
+      saveTimer.current = null
       const clean = stations.map(({ _id, ...rest }) => rest)
       onSaveRef.current({ stations: clean })
     }, 1500)
     return () => clearTimeout(saveTimer.current)
   }, [stations])
+
+  // Re-sync when config prop changes (e.g. after save round-trip or parent reload).
+  // Skip if the user has a pending edit to avoid discarding unsaved changes.
+  // Preserve existing _ids by index so DnD identity is stable across round-trips.
+  useEffect(() => {
+    if (saveTimer.current) return
+    initialized.current = false
+    setStations((prev) =>
+      (config.stations || []).map((s, i) => ({
+        ...s,
+        _id: prev[i]?._id || `s-${i}-${crypto.randomUUID()}`,
+      }))
+    )
+  }, [config])
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -522,10 +528,12 @@ export default function StationsTab({ config, deviceId, onSave }) {
   function handleDragEnd(event) {
     const { active, over } = event
     if (!over || active.id === over.id) return
-    const oldIndex = stations.findIndex((s) => s._id === active.id)
-    const newIndex = stations.findIndex((s) => s._id === over.id)
-    if (oldIndex === -1 || newIndex === -1) return
-    setStations(arrayMove(stations, oldIndex, newIndex))
+    setStations((prev) => {
+      const oldIndex = prev.findIndex((s) => s._id === active.id)
+      const newIndex = prev.findIndex((s) => s._id === over.id)
+      if (oldIndex === -1 || newIndex === -1) return prev
+      return arrayMove(prev, oldIndex, newIndex)
+    })
   }
 
   function updateStation(id, updated) {

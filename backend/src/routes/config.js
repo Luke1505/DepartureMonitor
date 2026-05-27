@@ -35,20 +35,27 @@ export default function configRouter(pool, requireDeviceToken) {
       return res.status(400).json({ error: 'Invalid config' });
     }
 
+    const client = await pool.connect();
     try {
-      await pool.query(
+      await client.query('BEGIN');
+      await client.query(
         `INSERT INTO devices (id, is_setup, last_seen) VALUES ($1, TRUE, NOW())
          ON CONFLICT (id) DO UPDATE SET is_setup = TRUE, last_seen = NOW()`,
         [id]
       );
-      const { rows } = await pool.query(
+      await client.query('DELETE FROM configs WHERE device_id = $1', [id]);
+      const { rows } = await client.query(
         'INSERT INTO configs (device_id, config) VALUES ($1, $2) RETURNING *',
         [id, config]
       );
+      await client.query('COMMIT');
       res.json(rows[0]);
     } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
       console.error(err);
       res.status(500).json({ error: 'Internal server error' });
+    } finally {
+      client.release();
     }
   });
 
