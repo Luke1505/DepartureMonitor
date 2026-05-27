@@ -348,4 +348,4 @@ DepartureMonitor/
 
 ## License
 
-MIT © 2024 Transit Keychain Contributors
+MIT © 2026 Transit Keychain Contributors
